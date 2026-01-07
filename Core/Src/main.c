@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "bsp_mpu6050.h"
+#include "pca9685.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,6 +43,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
+I2C_HandleTypeDef hi2c2;
 
 UART_HandleTypeDef huart4;
 
@@ -66,6 +68,13 @@ const osThreadAttr_t imu_task_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for pca9685task */
+osThreadId_t pca9685taskHandle;
+const osThreadAttr_t pca9685task_attributes = {
+  .name = "pca9685task",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -75,9 +84,11 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_UART4_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_I2C2_Init(void);
 void GPIO_Task(void *argument);
 void UART_Task(void *argument);
 void Imu_Task(void *argument);
+void PCA9685_Task(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -131,6 +142,7 @@ int main(void)
   MX_GPIO_Init();
   MX_UART4_Init();
   MX_I2C1_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
   MX_GPIO_Init();
   MX_UART4_Init();
@@ -164,6 +176,9 @@ int main(void)
 
   /* creation of imu_task */
   imu_taskHandle = osThreadNew(Imu_Task, NULL, &imu_task_attributes);
+
+  /* creation of pca9685task */
+  pca9685taskHandle = osThreadNew(PCA9685_Task, NULL, &pca9685task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
 	gpioTaskHandle = osThreadNew(GPIO_Task, NULL, &gpioTaskAttr);
@@ -272,6 +287,40 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief I2C2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C2_Init(void)
+{
+
+  /* USER CODE BEGIN I2C2_Init 0 */
+
+  /* USER CODE END I2C2_Init 0 */
+
+  /* USER CODE BEGIN I2C2_Init 1 */
+
+  /* USER CODE END I2C2_Init 1 */
+  hi2c2.Instance = I2C2;
+  hi2c2.Init.ClockSpeed = 100000;
+  hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c2.Init.OwnAddress1 = 0;
+  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c2.Init.OwnAddress2 = 0;
+  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C2_Init 2 */
+
+  /* USER CODE END I2C2_Init 2 */
+
+}
+
+/**
   * @brief UART4 Initialization Function
   * @param None
   * @retval None
@@ -341,7 +390,7 @@ static void MX_GPIO_Init(void)
 
 
 /* USER CODE END 4 */
-/* USER CODE BEGIN GPIO_Task */
+
 /* USER CODE BEGIN Header_GPIO_Task */
 /**
   * @brief  Function implementing the gpiotask thread.
@@ -351,14 +400,13 @@ static void MX_GPIO_Init(void)
 /* USER CODE END Header_GPIO_Task */
 void GPIO_Task(void *argument)
 {
-	(void) argument; // 避免未使用参数警告
-
-	while(1)
-	{
-		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);
-		osDelay(2);
-	}
-/* USER CODE END GPIO_Task */
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END 5 */
 }
 
 /* USER CODE BEGIN Header_UART_Task */
@@ -387,10 +435,10 @@ void UART_Task(void *argument)
   while(1)
   {
       cnt++;
-      sprintf(uart_send_buf, "UART Message Count: %lu\r\n", cnt);
+//      sprintf(uart_send_buf, "UART Message Count: %lu\r\n", cnt);
 
-      // 发送数据到串口
-      HAL_UART_Transmit(&huart4, (uint8_t*)uart_send_buf, strlen(uart_send_buf), 0xFFFF);
+//      // 发送数据到串口
+//      HAL_UART_Transmit(&huart4, (uint8_t*)uart_send_buf, strlen(uart_send_buf), 0xFFFF);
 
       // 每隔1秒发送一次
       osDelay(1000);
@@ -444,7 +492,7 @@ void Imu_Task(void *argument)
                 imu_data.gyro_x_dps, imu_data.gyro_y_dps, imu_data.gyro_z_dps,
                 imu_data.temperature_c);
 
-        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+//        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
     }
     else
     {
@@ -453,9 +501,75 @@ void Imu_Task(void *argument)
     }
 
     // 每隔100ms读取一次数据 (10Hz)
-    osDelay(100);
+    osDelay(1000);
   }
   /* USER CODE END Imu_Task */
+}
+
+/* USER CODE BEGIN Header_PCA9685_Task */
+/**
+* @brief Function implementing the pca9685task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_PCA9685_Task */
+void PCA9685_Task(void *argument)
+{
+  /* USER CODE BEGIN PCA9685_Task */
+  char servo_send_buf[100];
+  HAL_StatusTypeDef status;
+
+  // 等待系统稳定
+  osDelay(1000);
+
+  // 初始化PCA9685，设置PWM频率为50Hz（舵机标准频率）
+  status = HAL_I2C_IsDeviceReady(&hi2c2, PCA9685_ADDR, 5, 100);
+  if(status == HAL_OK)
+  {
+      PCA9685_Init(&hi2c2, 50.0f);  // 50Hz for servo control
+
+      // 发送初始化成功信息
+      sprintf(servo_send_buf, "PCA9685 Initialization Success!\r\n");
+      HAL_UART_Transmit(&huart4, (uint8_t*)servo_send_buf, strlen(servo_send_buf), 0xFFFF);
+  }
+  else
+  {
+      // 发送初始化失败信息
+      sprintf(servo_send_buf, "PCA9685 Device Not Found!\r\n");
+      HAL_UART_Transmit(&huart4, (uint8_t*)servo_send_buf, strlen(servo_send_buf), 0xFFFF);
+  }
+
+  /* Infinite loop */
+  for(;;)
+  {
+      // 控制舵机示例：让0号通道舵机在0度和180度之间来回转动
+      if(status == HAL_OK)
+      {
+          // 从0度转到180度
+          PCA9685_ServoControl(&hi2c2, 0, 0, 180, 2);  // 通道0，0度到180度，速度2
+
+          // 发送状态信息
+          sprintf(servo_send_buf, "Servo 0: 0->180 degrees\r\n");
+          HAL_UART_Transmit(&huart4, (uint8_t*)servo_send_buf, strlen(servo_send_buf), 0xFFFF);
+
+          osDelay(2000);  // 等待2秒
+
+          // 从180度转到0度
+          PCA9685_ServoControl(&hi2c2, 0, 180, 0, 2);  // 通道0，180度到0度，速度2
+
+          // 发送状态信息
+          sprintf(servo_send_buf, "Servo 0: 180->0 degrees\r\n");
+          HAL_UART_Transmit(&huart4, (uint8_t*)servo_send_buf, strlen(servo_send_buf), 0xFFFF);
+
+          osDelay(2000);  // 等待2秒
+      }
+      else
+      {
+          // 如果设备未找到，每秒检查一次
+          osDelay(1000);
+      }
+  }
+  /* USER CODE END PCA9685_Task */
 }
 
 /**

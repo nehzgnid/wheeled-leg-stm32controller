@@ -28,37 +28,21 @@ Project File Date:  01/07/2026
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'C:\keil5\ARM\ARMCC\Bin'
 Build target 'GPIO_Test_F4'
 compiling main.c...
-../Core/Src/main.c(390): warning:  #223-D: function "sprintf" declared implicitly
-        sprintf(uart_send_buf, "UART Message Count: %lu\r\n", cnt);
-../Core/Src/main.c(393): warning:  #223-D: function "strlen" declared implicitly
-        HAL_UART_Transmit(&huart4, (uint8_t*)uart_send_buf, strlen(uart_send_buf), 0xFFFF);
-../Core/Src/main.c(423): warning:  #223-D: function "sprintf" declared implicitly
-        sprintf(imu_send_buf, "MPU6050 Initialization Failed!\r\n");
-../Core/Src/main.c(424): warning:  #223-D: function "strlen" declared implicitly
-        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
-../Core/Src/main.c(429): warning:  #223-D: function "sprintf" declared implicitly
-        sprintf(imu_send_buf, "MPU6050 Initialization Success!\r\n");
-../Core/Src/main.c(430): warning:  #223-D: function "strlen" declared implicitly
-        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
-../Core/Src/main.c(441): warning:  #223-D: function "sprintf" declared implicitly
-          sprintf(imu_send_buf,
-../Core/Src/main.c(447): warning:  #223-D: function "strlen" declared implicitly
-          HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
-../Core/Src/main.c(451): warning:  #223-D: function "sprintf" declared implicitly
-          sprintf(imu_send_buf, "MPU6050 Read Error!\r\n");
-../Core/Src/main.c(452): warning:  #223-D: function "strlen" declared implicitly
-          HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
-../Core/Src/main.c(88): warning:  #550-D: variable "gpioTaskHandle"  was set but never used
+../Core/Inc/pca9685.h(25): warning:  #1-D: last line of file ends without a newline
+  #endif
+../Core/Src/main.c(430): warning:  #177-D: variable "uart_send_buf"  was declared but never referenced
+    char uart_send_buf[50];
+../Core/Src/main.c(99): warning:  #550-D: variable "gpioTaskHandle"  was set but never used
   static osThreadId_t gpioTaskHandle;
-../Core/Src/main.c(95): warning:  #177-D: variable "uartTaskHandle"  was declared but never referenced
+../Core/Src/main.c(106): warning:  #177-D: variable "uartTaskHandle"  was declared but never referenced
   static osThreadId_t uartTaskHandle;
-../Core/Src/main.c(96): warning:  #177-D: variable "uartTaskAttr"  was declared but never referenced
+../Core/Src/main.c(107): warning:  #177-D: variable "uartTaskAttr"  was declared but never referenced
   static const osThreadAttr_t uartTaskAttr = {
-../Core/Src/main.c: 13 warnings, 0 errors
+../Core/Src/main.c: 5 warnings, 0 errors
 linking...
-Program Size: Code=19856 RO-data=904 RW-data=164 ZI-data=20524  
+Program Size: Code=23072 RO-data=952 RW-data=168 ZI-data=20608  
 FromELF: creating hex file...
-"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 13 Warning(s).
+"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 5 Warning(s).
 
 <h2>Software Packages used:</h2>
 

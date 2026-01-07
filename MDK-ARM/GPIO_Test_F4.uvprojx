@@ -395,6 +395,16 @@
           <GroupName>Application/User/Core</GroupName>
           <Files>
             <File>
+              <FileName>bsp_mpu6050.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Core\Inc\bsp_mpu6050.h</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_mpu6050.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\bsp_mpu6050.c</FilePath>
+            </File>
+            <File>
               <FileName>main.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/main.c</FilePath>
@@ -420,14 +430,14 @@
               <FilePath>../Core/Src/stm32f4xx_hal_timebase_tim.c</FilePath>
             </File>
             <File>
-              <FileName>bsp_mpu6050.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Core\Src\bsp_mpu6050.c</FilePath>
+              <FileName>pca9685.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Core\Inc\pca9685.h</FilePath>
             </File>
             <File>
-              <FileName>bsp_mpu6050.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\Core\Inc\bsp_mpu6050.h</FilePath>
+              <FileName>pca9685.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\pca9685.c</FilePath>
             </File>
           </Files>
         </Group>
