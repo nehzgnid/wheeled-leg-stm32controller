@@ -22,21 +22,43 @@ Dialog DLL:      TCM.DLL V1.56.6.0
  
 <h2>Project:</h2>
 C:\Users\81006\Desktop\stm32pro\GPIO_Test_F4\MDK-ARM\GPIO_Test_F4.uvprojx
-Project File Date:  01/06/2026
+Project File Date:  01/07/2026
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'C:\keil5\ARM\ARMCC\Bin'
 Build target 'GPIO_Test_F4'
 compiling main.c...
-../Core/Src/main.c(131): warning:  #167-D: argument of type "void (*)(void)" is incompatible with parameter of type "osThreadFunc_t"
-  	gpioTaskHandle = osThreadNew(GPIO_Task, NULL, &gpioTaskAttr);
-../Core/Src/main.c(66): warning:  #550-D: variable "gpioTaskHandle"  was set but never used
+../Core/Src/main.c(390): warning:  #223-D: function "sprintf" declared implicitly
+        sprintf(uart_send_buf, "UART Message Count: %lu\r\n", cnt);
+../Core/Src/main.c(393): warning:  #223-D: function "strlen" declared implicitly
+        HAL_UART_Transmit(&huart4, (uint8_t*)uart_send_buf, strlen(uart_send_buf), 0xFFFF);
+../Core/Src/main.c(423): warning:  #223-D: function "sprintf" declared implicitly
+        sprintf(imu_send_buf, "MPU6050 Initialization Failed!\r\n");
+../Core/Src/main.c(424): warning:  #223-D: function "strlen" declared implicitly
+        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+../Core/Src/main.c(429): warning:  #223-D: function "sprintf" declared implicitly
+        sprintf(imu_send_buf, "MPU6050 Initialization Success!\r\n");
+../Core/Src/main.c(430): warning:  #223-D: function "strlen" declared implicitly
+        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+../Core/Src/main.c(441): warning:  #223-D: function "sprintf" declared implicitly
+          sprintf(imu_send_buf,
+../Core/Src/main.c(447): warning:  #223-D: function "strlen" declared implicitly
+          HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+../Core/Src/main.c(451): warning:  #223-D: function "sprintf" declared implicitly
+          sprintf(imu_send_buf, "MPU6050 Read Error!\r\n");
+../Core/Src/main.c(452): warning:  #223-D: function "strlen" declared implicitly
+          HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+../Core/Src/main.c(88): warning:  #550-D: variable "gpioTaskHandle"  was set but never used
   static osThreadId_t gpioTaskHandle;
-../Core/Src/main.c: 2 warnings, 0 errors
+../Core/Src/main.c(95): warning:  #177-D: variable "uartTaskHandle"  was declared but never referenced
+  static osThreadId_t uartTaskHandle;
+../Core/Src/main.c(96): warning:  #177-D: variable "uartTaskAttr"  was declared but never referenced
+  static const osThreadAttr_t uartTaskAttr = {
+../Core/Src/main.c: 13 warnings, 0 errors
 linking...
-Program Size: Code=10812 RO-data=544 RW-data=152 ZI-data=20352  
+Program Size: Code=19856 RO-data=904 RW-data=164 ZI-data=20524  
 FromELF: creating hex file...
-"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 2 Warning(s).
+"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 13 Warning(s).
 
 <h2>Software Packages used:</h2>
 

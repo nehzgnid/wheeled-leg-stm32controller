@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "bsp_mpu6050.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,12 +41,30 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-/* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
+I2C_HandleTypeDef hi2c1;
+
+UART_HandleTypeDef huart4;
+
+/* Definitions for gpiotask */
+osThreadId_t gpiotaskHandle;
+const osThreadAttr_t gpiotask_attributes = {
+  .name = "gpiotask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for uart_task */
+osThreadId_t uart_taskHandle;
+const osThreadAttr_t uart_task_attributes = {
+  .name = "uart_task",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for imu_task */
+osThreadId_t imu_taskHandle;
+const osThreadAttr_t imu_task_attributes = {
+  .name = "imu_task",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* USER CODE BEGIN PV */
 
@@ -55,10 +73,14 @@ const osThreadAttr_t defaultTask_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-void StartDefaultTask(void *argument);
+static void MX_UART4_Init(void);
+static void MX_I2C1_Init(void);
+void GPIO_Task(void *argument);
+void UART_Task(void *argument);
+void Imu_Task(void *argument);
 
 /* USER CODE BEGIN PFP */
-void GPIO_Task(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -68,6 +90,13 @@ static const osThreadAttr_t gpioTaskAttr = {
     .name     = "gpioTask",
     .stack_size = 512,
     .priority = osPriorityLow      // ? imu_task ????
+};
+
+static osThreadId_t uartTaskHandle;
+static const osThreadAttr_t uartTaskAttr = {
+    .name     = "uartTask",
+    .stack_size = 512,
+    .priority = osPriorityNormal
 };
 /* USER CODE END 0 */
 
@@ -100,8 +129,11 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_UART4_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-
+  MX_GPIO_Init();
+  MX_UART4_Init();
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -124,9 +156,15 @@ int main(void)
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
-	// HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);
+  /* creation of gpiotask */
+  gpiotaskHandle = osThreadNew(GPIO_Task, NULL, &gpiotask_attributes);
+
+  /* creation of uart_task */
+  uart_taskHandle = osThreadNew(UART_Task, NULL, &uart_task_attributes);
+
+  /* creation of imu_task */
+  imu_taskHandle = osThreadNew(Imu_Task, NULL, &imu_task_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
 	gpioTaskHandle = osThreadNew(GPIO_Task, NULL, &gpioTaskAttr);
 
@@ -200,6 +238,73 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief UART4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART4_Init(void)
+{
+
+  /* USER CODE BEGIN UART4_Init 0 */
+
+  /* USER CODE END UART4_Init 0 */
+
+  /* USER CODE BEGIN UART4_Init 1 */
+
+  /* USER CODE END UART4_Init 1 */
+  huart4.Instance = UART4;
+  huart4.Init.BaudRate = 115200;
+  huart4.Init.WordLength = UART_WORDLENGTH_8B;
+  huart4.Init.StopBits = UART_STOPBITS_1;
+  huart4.Init.Parity = UART_PARITY_NONE;
+  huart4.Init.Mode = UART_MODE_TX_RX;
+  huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart4.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART4_Init 2 */
+
+  /* USER CODE END UART4_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -213,11 +318,11 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PB12 */
   GPIO_InitStruct.Pin = GPIO_PIN_12;
@@ -232,33 +337,125 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void GPIO_Task(void)
+
+
+
+/* USER CODE END 4 */
+/* USER CODE BEGIN GPIO_Task */
+/* USER CODE BEGIN Header_GPIO_Task */
+/**
+  * @brief  Function implementing the gpiotask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_GPIO_Task */
+void GPIO_Task(void *argument)
 {
+	(void) argument; // 避免未使用参数警告
+
 	while(1)
 	{
 		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);
 		osDelay(2);
 	}
-	
+/* USER CODE END GPIO_Task */
 }
-/* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN Header_UART_Task */
 /**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+* @brief Function implementing the uart_task thread.
+* @param argument: Not used
+* @retval None
+*/
+
+/* USER CODE BEGIN Header_UART_Task */
+/**
+* @brief Function implementing the uart_task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_UART_Task */
+void UART_Task(void *argument)
 {
-  /* USER CODE BEGIN 5 */
+  /* USER CODE BEGIN UART_Task */
+  uint32_t cnt = 0;
+  char uart_send_buf[50];
+
+  // 等待系统稳定
+  osDelay(1000);
+
+  while(1)
+  {
+      cnt++;
+      sprintf(uart_send_buf, "UART Message Count: %lu\r\n", cnt);
+
+      // 发送数据到串口
+      HAL_UART_Transmit(&huart4, (uint8_t*)uart_send_buf, strlen(uart_send_buf), 0xFFFF);
+
+      // 每隔1秒发送一次
+      osDelay(1000);
+  }
+  /* USER CODE END UART_Task */
+}
+
+/* USER CODE BEGIN Header_Imu_Task */
+/**
+* @brief Function implementing the imu_task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_Imu_Task */
+void Imu_Task(void *argument)
+{
+  /* USER CODE BEGIN Imu_Task */
+  MPU6050_Data_t imu_data;
+  char imu_send_buf[100];
+  HAL_StatusTypeDef status;
+
+  // 等待系统稳定
+  osDelay(1000);
+
+  // 初始化MPU6050传感器
+  status = BSP_MPU6050_Init(&hi2c1);
+  if(status != HAL_OK)
+  {
+      // 初始化失败，发送错误信息
+      sprintf(imu_send_buf, "MPU6050 Initialization Failed!\r\n");
+      HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+  }
+  else
+  {
+      // 初始化成功，发送确认信息
+      sprintf(imu_send_buf, "MPU6050 Initialization Success!\r\n");
+      HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+  }
+
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    // 读取MPU6050传感器数据
+    status = BSP_MPU6050_Read_Data(&hi2c1, &imu_data);
+    if(status == HAL_OK)
+    {
+        // 格式化并发送IMU数据
+        sprintf(imu_send_buf,
+                "IMU: Accel[X:%.2fg,Y:%.2fg,Z:%.2fg] Gyro[X:%.2fdps,Y:%.2fdps,Z:%.2fdps] Temp:%.2fc\r\n",
+                imu_data.accel_x_g, imu_data.accel_y_g, imu_data.accel_z_g,
+                imu_data.gyro_x_dps, imu_data.gyro_y_dps, imu_data.gyro_z_dps,
+                imu_data.temperature_c);
+
+        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+    }
+    else
+    {
+        sprintf(imu_send_buf, "MPU6050 Read Error!\r\n");
+        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+    }
+
+    // 每隔100ms读取一次数据 (10Hz)
+    osDelay(100);
   }
-  /* USER CODE END 5 */
+  /* USER CODE END Imu_Task */
 }
 
 /**
