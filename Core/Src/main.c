@@ -51,28 +51,28 @@ UART_HandleTypeDef huart4;
 osThreadId_t gpiotaskHandle;
 const osThreadAttr_t gpiotask_attributes = {
   .name = "gpiotask",
-  .stack_size = 128 * 4,
+  .stack_size = 2048,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for uart_task */
 osThreadId_t uart_taskHandle;
 const osThreadAttr_t uart_task_attributes = {
   .name = "uart_task",
-  .stack_size = 128 * 4,
+  .stack_size = 2048,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for imu_task */
 osThreadId_t imu_taskHandle;
 const osThreadAttr_t imu_task_attributes = {
   .name = "imu_task",
-  .stack_size = 512 * 4,
+  .stack_size = 2048,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for pca9685task */
 osThreadId_t pca9685taskHandle;
 const osThreadAttr_t pca9685task_attributes = {
   .name = "pca9685task",
-  .stack_size = 512 * 4,
+  .stack_size = 2048,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* USER CODE BEGIN PV */
@@ -96,19 +96,7 @@ void PCA9685_Task(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static osThreadId_t gpioTaskHandle;
-static const osThreadAttr_t gpioTaskAttr = {
-    .name     = "gpioTask",
-    .stack_size = 512,
-    .priority = osPriorityLow      // ? imu_task ????
-};
 
-static osThreadId_t uartTaskHandle;
-static const osThreadAttr_t uartTaskAttr = {
-    .name     = "uartTask",
-    .stack_size = 512,
-    .priority = osPriorityNormal
-};
 /* USER CODE END 0 */
 
 /**
@@ -146,6 +134,10 @@ int main(void)
   /* USER CODE BEGIN 2 */
   MX_GPIO_Init();
   MX_UART4_Init();
+
+  // 系统启动信息输出
+  char start_msg[] = "System Started Successfully!\r\n";
+  HAL_UART_Transmit(&huart4, (uint8_t*)start_msg, strlen(start_msg), 0xFFFF);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -181,7 +173,6 @@ int main(void)
   pca9685taskHandle = osThreadNew(PCA9685_Task, NULL, &pca9685task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-	gpioTaskHandle = osThreadNew(GPIO_Task, NULL, &gpioTaskAttr);
 
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -492,7 +483,7 @@ void Imu_Task(void *argument)
                 imu_data.gyro_x_dps, imu_data.gyro_y_dps, imu_data.gyro_z_dps,
                 imu_data.temperature_c);
 
-//        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
     }
     else
     {
@@ -501,7 +492,7 @@ void Imu_Task(void *argument)
     }
 
     // 每隔100ms读取一次数据 (10Hz)
-    osDelay(1000);
+    osDelay(100);
   }
   /* USER CODE END Imu_Task */
 }
@@ -565,7 +556,18 @@ void PCA9685_Task(void *argument)
       }
       else
       {
-          // 如果设备未找到，每秒检查一次
+          // 如果设备未找到，尝试重新初始化
+          status = HAL_I2C_IsDeviceReady(&hi2c2, PCA9685_ADDR, 5, 100);
+          if(status == HAL_OK)
+          {
+              PCA9685_Init(&hi2c2, 50.0f);  // 50Hz for servo control
+
+              // 发送重新初始化成功信息
+              sprintf(servo_send_buf, "PCA9685 Re-initialization Success!\r\n");
+              HAL_UART_Transmit(&huart4, (uint8_t*)servo_send_buf, strlen(servo_send_buf), 0xFFFF);
+          }
+
+          // 如果设备仍然未找到，每秒检查一次
           osDelay(1000);
       }
   }
@@ -602,6 +604,9 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  char error_msg[] = "Error_Handler: System Error Occurred!\r\n";
+  HAL_UART_Transmit(&huart4, (uint8_t*)error_msg, strlen(error_msg), 0xFFFF);
+
   __disable_irq();
   while (1)
   {
