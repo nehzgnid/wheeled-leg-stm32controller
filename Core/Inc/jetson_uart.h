@@ -26,24 +26,40 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "main.h"
+#include "stm32f4xx_hal.h"  /*!< 包含HAL库定义 */
 #include "cmsis_os.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
 /* USER CODE END Includes */
 
+/* External variables --------------------------------------------------------*/
+extern UART_HandleTypeDef huart4;
+extern UART_HandleTypeDef huart5;
+
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-// 定义舵机控制消息结构体
+// 通信消息类型定义
+typedef enum {
+    MSG_TYPE_HEARTBEAT = 0,    // 心跳包
+    MSG_TYPE_DATA = 1,         // 数据传输
+    MSG_TYPE_CMD = 2,          // 命令传输
+    MSG_TYPE_ACK = 3,          // 确认消息
+    MSG_TYPE_ERROR = 4         // 错误消息
+} MessageType_t;
+
+// 通信消息结构体
 typedef struct {
-    uint8_t servo_channel;    // 舵机通道 (0-15)
-    uint8_t target_angle;     // 目标角度 (0-180)
-    uint8_t speed;            // 速度 (1-9, 数值越大越慢)
-} ServoControlMsg_t;
+    MessageType_t type;        // 消息类型
+    uint8_t id;               // 消息ID
+    uint8_t length;           // 数据长度
+    uint8_t data[64];         // 数据载荷
+} JetsonMessage_t;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -58,20 +74,55 @@ typedef struct {
 
 /* Exported functions prototypes ---------------------------------------------*/
 /* USER CODE BEGIN EFP */
-// 解析命令函数
-uint8_t parse_servo_command(uint8_t *buf, uint8_t len, ServoControlMsg_t *msg);
+// 初始化UART通信
+HAL_StatusTypeDef JetsonUart_Init(void);
 
-// 发送应答消息
-void send_ack_message(uint8_t channel, uint8_t angle);
+// 启动UART中断接收
+HAL_StatusTypeDef JetsonUart_StartReceiveIT(void);
+
+// 发送心跳消息
+HAL_StatusTypeDef Jetson_SendHeartbeat(void);
+
+// 发送数据消息
+HAL_StatusTypeDef Jetson_SendData(uint8_t *data, uint8_t length);
+
+// 发送确认消息
+HAL_StatusTypeDef Jetson_SendAck(uint8_t msg_id);
 
 // 发送错误消息
-void send_error_message(const char* error_msg);
+HAL_StatusTypeDef Jetson_SendError(uint8_t error_code, const char* error_msg);
 
-// UART5接收相关全局变量声明
-extern uint8_t uart5_rx_data;
-extern uint8_t uart5_rx_buffer[100];
-extern uint8_t uart5_rx_index;
-extern uint8_t uart5_frame_complete;
+// 接收消息处理
+HAL_StatusTypeDef Jetson_ProcessReceivedData(uint8_t *data, uint8_t length);
+
+// 获取接收缓冲区指针
+uint8_t* Jetson_GetRxBuffer(void);
+
+// 获取接收数据长度
+uint8_t Jetson_GetRxLength(void);
+
+// 重置接收状态
+void Jetson_ResetRxState(void);
+
+// UART接收完成回调函数（供HAL调用）
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
+
+// 检查接收超时的函数
+void Jetson_CheckReceiveTimeout(void);
+
+// 定期清理接收缓冲区的函数
+void Jetson_ClearStaleData(void);
+
+// 发送当前姿态消息
+HAL_StatusTypeDef SendCurrentPose(void);
+
+// 检查姿态是否发生变化
+uint8_t CheckPoseChanged(void);
+
+// 更新IMU数据
+void UpdateIMUData(float accel_x, float accel_y, float accel_z,
+                   float gyro_x, float gyro_y, float gyro_z,
+                   float temperature);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

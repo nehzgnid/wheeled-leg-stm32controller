@@ -139,9 +139,25 @@ void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle)
  */
 void PCA9685_ServoControl(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t start_angle, uint8_t end_angle, uint8_t speed)
 {
+    // For faster response, just set the final position
+    uint32_t off_time = (uint32_t)(110 + end_angle * 2.27f);
+    PCA9685_SetPWM(hi2c, num, 0, off_time);
+}
+
+/**
+ * @brief  Control servo motor with PCA9685 with smooth movement
+ * @param  hi2c: I2C handle
+ * @param  num: Servo channel (0-15)
+ * @param  start_angle: Start angle (0-180 degrees)
+ * @param  end_angle: End angle (0-180 degrees)
+ * @param  speed: Speed control (1-9, higher value means slower)
+ * @retval None
+ */
+void PCA9685_ServoControlSmooth(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t start_angle, uint8_t end_angle, uint8_t speed)
+{
     int i, delay_time;
     uint32_t off_time;
-    
+
     // Set delay time based on speed (higher speed value = slower movement)
     switch(speed)
     {

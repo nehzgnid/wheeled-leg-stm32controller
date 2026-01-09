@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "bsp_mpu6050.h"
 #include "pca9685.h"
+#include "jetson_uart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,33 +47,43 @@ I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 
 UART_HandleTypeDef huart4;
+UART_HandleTypeDef huart5;
 
 /* Definitions for gpiotask */
 osThreadId_t gpiotaskHandle;
 const osThreadAttr_t gpiotask_attributes = {
   .name = "gpiotask",
-  .stack_size = 2048,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for uart_task */
 osThreadId_t uart_taskHandle;
 const osThreadAttr_t uart_task_attributes = {
   .name = "uart_task",
-  .stack_size = 2048,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for imu_task */
 osThreadId_t imu_taskHandle;
 const osThreadAttr_t imu_task_attributes = {
   .name = "imu_task",
-  .stack_size = 2048,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+
+
 /* Definitions for pca9685task */
 osThreadId_t pca9685taskHandle;
 const osThreadAttr_t pca9685task_attributes = {
   .name = "pca9685task",
-  .stack_size = 2048,
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for jetson_task */
+osThreadId_t jetson_taskHandle;
+const osThreadAttr_t jetson_task_attributes = {
+  .name = "jetson_task",
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* USER CODE BEGIN PV */
@@ -85,10 +96,12 @@ static void MX_GPIO_Init(void);
 static void MX_UART4_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
+static void MX_UART5_Init(void);
 void GPIO_Task(void *argument);
 void UART_Task(void *argument);
 void Imu_Task(void *argument);
 void PCA9685_Task(void *argument);
+void Jetson_Task(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -131,6 +144,7 @@ int main(void)
   MX_UART4_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
+  MX_UART5_Init();
   /* USER CODE BEGIN 2 */
   MX_GPIO_Init();
   MX_UART4_Init();
@@ -171,6 +185,9 @@ int main(void)
 
   /* creation of pca9685task */
   pca9685taskHandle = osThreadNew(PCA9685_Task, NULL, &pca9685task_attributes);
+
+  /* creation of jetson_task */
+  jetson_taskHandle = osThreadNew(Jetson_Task, NULL, &jetson_task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
 
@@ -345,6 +362,41 @@ static void MX_UART4_Init(void)
 }
 
 /**
+  * @brief UART5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART5_Init(void)
+{
+
+  /* USER CODE BEGIN UART5_Init 0 */
+
+  /* USER CODE END UART5_Init 0 */
+
+  /* USER CODE BEGIN UART5_Init 1 */
+
+  /* USER CODE END UART5_Init 1 */
+  huart5.Instance = UART5;
+  huart5.Init.BaudRate = 115200;
+  huart5.Init.WordLength = UART_WORDLENGTH_8B;
+  huart5.Init.StopBits = UART_STOPBITS_1;
+  huart5.Init.Parity = UART_PARITY_NONE;
+  huart5.Init.Mode = UART_MODE_TX_RX;
+  huart5.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart5.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART5_Init 2 */
+  // 使能UART5中断，调整优先级以避免与系统中断冲突
+  HAL_NVIC_SetPriority(UART5_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(UART5_IRQn);
+  /* USER CODE END UART5_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -360,6 +412,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);
@@ -474,6 +528,7 @@ void Imu_Task(void *argument)
   {
     // 读取MPU6050传感器数据
     status = BSP_MPU6050_Read_Data(&hi2c1, &imu_data);
+
     if(status == HAL_OK)
     {
         // 格式化并发送IMU数据
@@ -483,7 +538,13 @@ void Imu_Task(void *argument)
                 imu_data.gyro_x_dps, imu_data.gyro_y_dps, imu_data.gyro_z_dps,
                 imu_data.temperature_c);
 
-        HAL_UART_Transmit(&huart4, (uint8_t*)imu_send_buf, strlen(imu_send_buf), 0xFFFF);
+        // 更新IMU数据到综合姿态信息
+        extern void UpdateIMUData(float accel_x, float accel_y, float accel_z,
+                                  float gyro_x, float gyro_y, float gyro_z,
+                                  float temperature);
+        UpdateIMUData(imu_data.accel_x_g, imu_data.accel_y_g, imu_data.accel_z_g,
+                      imu_data.gyro_x_dps, imu_data.gyro_y_dps, imu_data.gyro_z_dps,
+                      imu_data.temperature_c);
     }
     else
     {
@@ -533,28 +594,8 @@ void PCA9685_Task(void *argument)
   /* Infinite loop */
   for(;;)
   {
-      // 控制舵机示例：让0号通道舵机在0度和180度之间来回转动
-      if(status == HAL_OK)
-      {
-          // 从0度转到180度
-          PCA9685_ServoControl(&hi2c2, 0, 0, 180, 2);  // 通道0，0度到180度，速度2
-
-          // 发送状态信息
-          sprintf(servo_send_buf, "Servo 0: 0->180 degrees\r\n");
-          HAL_UART_Transmit(&huart4, (uint8_t*)servo_send_buf, strlen(servo_send_buf), 0xFFFF);
-
-          osDelay(2000);  // 等待2秒
-
-          // 从180度转到0度
-          PCA9685_ServoControl(&hi2c2, 0, 180, 0, 2);  // 通道0，180度到0度，速度2
-
-          // 发送状态信息
-          sprintf(servo_send_buf, "Servo 0: 180->0 degrees\r\n");
-          HAL_UART_Transmit(&huart4, (uint8_t*)servo_send_buf, strlen(servo_send_buf), 0xFFFF);
-
-          osDelay(2000);  // 等待2秒
-      }
-      else
+      // 现在舵机控制由UART接收消息驱动，这里只负责检查设备状态
+      if(status != HAL_OK)
       {
           // 如果设备未找到，尝试重新初始化
           status = HAL_I2C_IsDeviceReady(&hi2c2, PCA9685_ADDR, 5, 100);
@@ -566,12 +607,78 @@ void PCA9685_Task(void *argument)
               sprintf(servo_send_buf, "PCA9685 Re-initialization Success!\r\n");
               HAL_UART_Transmit(&huart4, (uint8_t*)servo_send_buf, strlen(servo_send_buf), 0xFFFF);
           }
-
-          // 如果设备仍然未找到，每秒检查一次
-          osDelay(1000);
       }
+
+      // 延迟较长时间，因为主要控制逻辑在UART接收部分
+      osDelay(1000);
   }
   /* USER CODE END PCA9685_Task */
+}
+
+/* USER CODE BEGIN Header_Jetson_Task */
+/**
+* @brief Function implementing the jetson_task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_Jetson_Task */
+void Jetson_Task(void *argument)
+{
+  /* USER CODE BEGIN Jetson_Task */
+  char debug_msg[100];
+
+  // 用于100Hz姿态回传的时间跟踪
+  uint32_t last_pose_transmit = 0;
+  const uint32_t POSE_TRANSMIT_INTERVAL = 10; // 10ms = 100Hz
+
+  // 初始化UART通信
+  JetsonUart_Init();
+
+  // 等待UART完全初始化
+  osDelay(100);
+
+  // 启动UART5中断接收
+  if(JetsonUart_StartReceiveIT() != HAL_OK) {
+      sprintf(debug_msg, "Failed to start UART5 IT receive\r\n");
+      HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
+  } else {
+      sprintf(debug_msg, "UART5 IT receive started successfully\r\n");
+      HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
+  }
+
+  // 等待系统稳定
+  osDelay(1000);
+
+  // 发送初始化完成消息
+  sprintf(debug_msg, "Jetson Comm Task Started at 100Hz\r\n");
+  HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
+
+  /* Infinite loop */
+  for(;;)
+  {
+    // 100Hz通信速率，即每10ms执行一次循环
+    // 数据接收由中断处理，这里可以做其他事情
+    osDelay(10);
+
+    // 检查接收超时并处理
+    Jetson_CheckReceiveTimeout();
+    // 定期清理可能的陈旧数据
+    Jetson_ClearStaleData();
+
+    // 检查姿态是否发生变化，如果变化则发送
+    if(CheckPoseChanged()) {
+        // 发送当前姿态
+        SendCurrentPose();
+        last_pose_transmit = HAL_GetTick();
+    }
+    // 同时保持最小发送间隔，避免过于频繁发送
+    else if((HAL_GetTick() - last_pose_transmit) >= POSE_TRANSMIT_INTERVAL) {
+        // 即使没有变化，也定期发送以维持通信
+        SendCurrentPose();
+        last_pose_transmit = HAL_GetTick();
+    }
+  }
+  /* USER CODE END Jetson_Task */
 }
 
 /**

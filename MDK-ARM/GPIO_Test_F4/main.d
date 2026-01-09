@@ -49,3 +49,5 @@ gpio_test_f4\main.o: ../Core/Inc/pca9685.h
 gpio_test_f4\main.o: C:\keil5\ARM\ARMCC\Bin\..\include\math.h
 gpio_test_f4\main.o: C:\keil5\ARM\ARMCC\Bin\..\include\string.h
 gpio_test_f4\main.o: C:\keil5\ARM\ARMCC\Bin\..\include\stdio.h
+gpio_test_f4\main.o: ../Core/Inc/jetson_uart.h
+gpio_test_f4\main.o: C:\keil5\ARM\ARMCC\Bin\..\include\stdlib.h
