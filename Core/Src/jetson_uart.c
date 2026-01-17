@@ -120,6 +120,20 @@ static uint8_t motor_cmd_type[4] = {0};     /*!< 上位机发来的电机命令�
 // 电机命令数组的互斥锁，用于保护中断和任务之间的数据访问
 static osMutexId_t motor_cmd_mutex = NULL;
 
+// 舵机运动状态 - 用于按时间平滑移动
+typedef struct {
+    uint8_t start_angle;       // 开始角度
+    uint8_t target_angle;      // 目标角度
+    uint32_t start_time;       // 开始时间
+    uint32_t duration;         // 总持续时间（毫秒）
+    uint8_t moving;            // 是否正在移动
+} ServoMotion_t;
+
+static ServoMotion_t servo_motion[16] = {0};  // 16个舵机的运动状态
+
+// 舵机当前角度跟踪 - 用于平滑移动的起始角度
+static uint8_t servo_current_angles[16] = {0}; // 16个舵机的当前角度
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -279,8 +293,21 @@ HAL_StatusTypeDef ParseServoControlMessage(uint8_t *buffer, uint8_t length)
     extern void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle);
     extern I2C_HandleTypeDef hi2c2;  /*!< 外部I2C句柄 */
 
-    // 直接设置舵机角度，不使用缓慢移动
-    PCA9685_SetAngle(&hi2c2, servo_id, angle);
+    // 如果duration为0，立即设置角度
+    if(duration == 0) {
+        PCA9685_SetAngle(&hi2c2, servo_id, angle);
+        // 更新舵机运动状态
+        servo_motion[servo_id].moving = 0;
+        servo_current_angles[servo_id] = angle; // 更新当前角度
+    } else {
+        // 设置舵机运动参数，但不立即执行
+        // 使用当前实际角度作为起始角度，而不是目标角度
+        servo_motion[servo_id].start_angle = servo_current_angles[servo_id];  // 使用当前实际角度
+        servo_motion[servo_id].target_angle = angle;
+        servo_motion[servo_id].duration = duration;
+        servo_motion[servo_id].start_time = HAL_GetTick();
+        servo_motion[servo_id].moving = 1;
+    }
 
     return HAL_OK;
 }
@@ -563,6 +590,33 @@ uint8_t GetMotorCommandType(uint8_t motor_id)
 }
 
 /* USER CODE END 4 */
+
+// 持续更新舵机角度，实现按时间平滑移动
+void Servo_UpdateAll(void)
+{
+    uint32_t now = HAL_GetTick();
+    extern I2C_HandleTypeDef hi2c2;  /*!< 外部I2C句柄 */
+    extern void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle);
+
+    for (int id = 0; id < 16; id++) {
+        if (!servo_motion[id].moving) continue;
+
+        uint32_t elapsed = now - servo_motion[id].start_time;
+        if (elapsed >= servo_motion[id].duration) {
+            // 到达目标
+            PCA9685_SetAngle(&hi2c2, id, servo_motion[id].target_angle);
+            servo_current_angles[id] = servo_motion[id].target_angle; // 更新当前角度
+            servo_motion[id].moving = 0;
+        } else {
+            // 计算当前应该到达的角度
+            float ratio = (float)elapsed / servo_motion[id].duration;
+            uint8_t next_angle = servo_motion[id].start_angle +
+                (servo_motion[id].target_angle - servo_motion[id].start_angle) * ratio;
+            PCA9685_SetAngle(&hi2c2, id, next_angle);
+            servo_current_angles[id] = next_angle; // 更新当前角度
+        }
+    }
+}
 
 /**
   * @brief  Initialize UART communication with Jetson

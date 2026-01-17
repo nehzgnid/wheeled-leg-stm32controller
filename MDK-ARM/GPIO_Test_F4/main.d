@@ -44,10 +44,12 @@ gpio_test_f4\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrap
 gpio_test_f4\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h
 gpio_test_f4\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h
 gpio_test_f4\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h
+gpio_test_f4\main.o: C:\keil5\ARM\ARMCC\Bin\..\include\math.h
 gpio_test_f4\main.o: ../Core/Inc/bsp_mpu6050.h
 gpio_test_f4\main.o: ../Core/Inc/pca9685.h
-gpio_test_f4\main.o: C:\keil5\ARM\ARMCC\Bin\..\include\math.h
 gpio_test_f4\main.o: C:\keil5\ARM\ARMCC\Bin\..\include\string.h
 gpio_test_f4\main.o: C:\keil5\ARM\ARMCC\Bin\..\include\stdio.h
 gpio_test_f4\main.o: ../Core/Inc/jetson_uart.h
 gpio_test_f4\main.o: C:\keil5\ARM\ARMCC\Bin\..\include\stdlib.h
+gpio_test_f4\main.o: ../Core/Inc/Motor.h
+gpio_test_f4\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/queue.h

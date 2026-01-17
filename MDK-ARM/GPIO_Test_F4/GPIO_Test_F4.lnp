@@ -1,4 +1,4 @@
---cpu Cortex-M4.fp
+--cpu=Cortex-M4.fp.sp
 "gpio_test_f4\startup_stm32f407xx.o"
 "gpio_test_f4\bsp_mpu6050.o"
 "gpio_test_f4\pca9685.o"
@@ -38,6 +38,6 @@
 "gpio_test_f4\heap_4.o"
 "gpio_test_f4\port.o"
 --strict --scatter "GPIO_Test_F4\GPIO_Test_F4.sct"
---summary_stderr --info summarysizes --map --xref --callgraph --symbols
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
 --list "GPIO_Test_F4.map" -o GPIO_Test_F4\GPIO_Test_F4.axf

@@ -137,6 +137,9 @@ void GetMotorCommand(uint8_t motor_id, int8_t *direction, float *speed_rpm);
 // 获取上位机发来的电机命令类型
 uint8_t GetMotorCommandType(uint8_t motor_id);
 
+// 持续更新舵机角度，实现按时间平滑移动
+void Servo_UpdateAll(void);
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
