@@ -57,6 +57,40 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define MotorEncoderSignal_2C2_Pin GPIO_PIN_5
+#define MotorEncoderSignal_2C2_GPIO_Port GPIOA
+#define MotorEncoderSignal_3C1_Pin GPIO_PIN_6
+#define MotorEncoderSignal_3C1_GPIO_Port GPIOA
+#define MotorEncoderSignal_3C2_Pin GPIO_PIN_7
+#define MotorEncoderSignal_3C2_GPIO_Port GPIOA
+#define MotorEncoderSignal_1C1_Pin GPIO_PIN_9
+#define MotorEncoderSignal_1C1_GPIO_Port GPIOE
+#define MotorEncoderSignal_1C2_Pin GPIO_PIN_11
+#define MotorEncoderSignal_1C2_GPIO_Port GPIOE
+#define DebugIO_Pin GPIO_PIN_12
+#define DebugIO_GPIO_Port GPIOB
+#define MotorDirectionControl_IO3_1_Pin GPIO_PIN_8
+#define MotorDirectionControl_IO3_1_GPIO_Port GPIOD
+#define MotorDirectionControl_IO3_2_Pin GPIO_PIN_9
+#define MotorDirectionControl_IO3_2_GPIO_Port GPIOD
+#define MotorDirectionControl_IO2_1_Pin GPIO_PIN_10
+#define MotorDirectionControl_IO2_1_GPIO_Port GPIOD
+#define MotorDirectionControl_IO2_2_Pin GPIO_PIN_11
+#define MotorDirectionControl_IO2_2_GPIO_Port GPIOD
+#define MotorDirectionControl_IO1_1_Pin GPIO_PIN_12
+#define MotorDirectionControl_IO1_1_GPIO_Port GPIOD
+#define MotorDirectionControl_IO1_2_Pin GPIO_PIN_13
+#define MotorDirectionControl_IO1_2_GPIO_Port GPIOD
+#define MotorDirectionControl_IO4_1_Pin GPIO_PIN_14
+#define MotorDirectionControl_IO4_1_GPIO_Port GPIOD
+#define MotorDirectionControl_IO4_2_Pin GPIO_PIN_15
+#define MotorDirectionControl_IO4_2_GPIO_Port GPIOD
+#define MotorEncoderSignal_4C1_Pin GPIO_PIN_6
+#define MotorEncoderSignal_4C1_GPIO_Port GPIOC
+#define MotorEncoderSignal_4C2_Pin GPIO_PIN_7
+#define MotorEncoderSignal_4C2_GPIO_Port GPIOC
+#define MotorEncoderSignal_2C1_Pin GPIO_PIN_3
+#define MotorEncoderSignal_2C1_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

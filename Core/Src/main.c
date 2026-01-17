@@ -25,6 +25,10 @@
 #include "bsp_mpu6050.h"
 #include "pca9685.h"
 #include "jetson_uart.h"
+#include "Motor.h"
+#include "FreeRTOS.h"
+#include "queue.h"
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,8 +50,14 @@
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 
+TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim8;
+
 UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart5;
+UART_HandleTypeDef huart1;
 
 /* Definitions for gpiotask */
 osThreadId_t gpiotaskHandle;
@@ -70,8 +80,6 @@ const osThreadAttr_t imu_task_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
-
-
 /* Definitions for pca9685task */
 osThreadId_t pca9685taskHandle;
 const osThreadAttr_t pca9685task_attributes = {
@@ -86,8 +94,95 @@ const osThreadAttr_t jetson_task_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for MotorTask1 */
+osThreadId_t MotorTask1Handle;
+const osThreadAttr_t MotorTask1_attributes = {
+  .name = "MotorTask1",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for MotorTask2 */
+osThreadId_t MotorTask2Handle;
+const osThreadAttr_t MotorTask2_attributes = {
+  .name = "MotorTask2",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for MotorTask3 */
+osThreadId_t MotorTask3Handle;
+const osThreadAttr_t MotorTask3_attributes = {
+  .name = "MotorTask3",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for MotorTask4 */
+osThreadId_t MotorTask4Handle;
+const osThreadAttr_t MotorTask4_attributes = {
+  .name = "MotorTask4",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for UARTTask1 */
+osThreadId_t UARTTask1Handle;
+const osThreadAttr_t UARTTask1_attributes = {
+  .name = "UARTTask1",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for MotorCtrlTasK1 */
+osThreadId_t MotorCtrlTasK1Handle;
+const osThreadAttr_t MotorCtrlTasK1_attributes = {
+  .name = "MotorCtrlTasK1",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for MotorCtrlTasK2 */
+osThreadId_t MotorCtrlTasK2Handle;
+const osThreadAttr_t MotorCtrlTasK2_attributes = {
+  .name = "MotorCtrlTasK2",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for MotorCtrlTasK3 */
+osThreadId_t MotorCtrlTasK3Handle;
+const osThreadAttr_t MotorCtrlTasK3_attributes = {
+  .name = "MotorCtrlTasK3",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for MotorCtrlTasK4 */
+osThreadId_t MotorCtrlTasK4Handle;
+const osThreadAttr_t MotorCtrlTasK4_attributes = {
+  .name = "MotorCtrlTasK4",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for MotorQueue */
+osMessageQueueId_t MotorQueueHandle;
+const osMessageQueueAttr_t MotorQueue_attributes = {
+  .name = "MotorQueue"
+};
+/* Definitions for UART1Mutex01 */
+osMutexId_t UART1Mutex01Handle;
+const osMutexAttr_t UART1Mutex01_attributes = {
+  .name = "UART1Mutex01"
+};
 /* USER CODE BEGIN PV */
+osMutexId_t UART1Handle;
+osMessageQueueId_t MotorQueueHandle;
 
+uint8_t Motor_1=0x00;
+uint8_t Motor_2=0x01;
+uint8_t Motor_3=0x02;
+uint8_t Motor_4=0x03;
+
+Motor_Status_t motor1_n20 = { 1,0,0,0,0,0 };
+Motor_Status_t motor2_n20 = { 2,0,0,0,0,0 };
+Motor_Status_t motor3_n20 = { 3,0,0,0,0,0 };
+Motor_Status_t motor4_n20 = { 4,0,0,0,0,0 };
+
+// 全局电机状态数组
+Motor_Status_t all_motors[4] = {0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -97,11 +192,19 @@ static void MX_UART4_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_UART5_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM8_Init(void);
 void GPIO_Task(void *argument);
 void UART_Task(void *argument);
 void Imu_Task(void *argument);
 void PCA9685_Task(void *argument);
 void Jetson_Task(void *argument);
+void MotorSpeedTask(void *argument);
+void UART_Task1(void *argument);
+void MotorCtrl_TasK(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -145,6 +248,11 @@ int main(void)
   MX_I2C1_Init();
   MX_I2C2_Init();
   MX_UART5_Init();
+  MX_TIM3_Init();
+  MX_USART1_UART_Init();
+  MX_TIM1_Init();
+  MX_TIM2_Init();
+  MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
   MX_GPIO_Init();
   MX_UART4_Init();
@@ -156,9 +264,13 @@ int main(void)
 
   /* Init scheduler */
   osKernelInitialize();
+  /* Create the mutex(es) */
+  /* creation of UART1Mutex01 */
+  UART1Mutex01Handle = osMutexNew(&UART1Mutex01_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
+	UART1Handle = osMutexNew(NULL);
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -168,6 +280,10 @@ int main(void)
   /* USER CODE BEGIN RTOS_TIMERS */
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
+
+  /* Create the queue(s) */
+  /* creation of MotorQueue */
+  MotorQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &MotorQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -189,13 +305,44 @@ int main(void)
   /* creation of jetson_task */
   jetson_taskHandle = osThreadNew(Jetson_Task, NULL, &jetson_task_attributes);
 
-  /* USER CODE BEGIN RTOS_THREADS */
+  /* creation of MotorTask1 */
+  MotorTask1Handle = osThreadNew(MotorSpeedTask, (void*) &motor1_n20, &MotorTask1_attributes);
 
+  /* creation of MotorTask2 */
+  MotorTask2Handle = osThreadNew(MotorSpeedTask, (void*) &motor2_n20, &MotorTask2_attributes);
+
+  /* creation of MotorTask3 */
+  MotorTask3Handle = osThreadNew(MotorSpeedTask, (void*) &motor3_n20, &MotorTask3_attributes);
+
+  /* creation of MotorTask4 */
+  MotorTask4Handle = osThreadNew(MotorSpeedTask, (void*) &motor4_n20, &MotorTask4_attributes);
+
+  /* creation of UARTTask1 */
+  UARTTask1Handle = osThreadNew(UART_Task1, NULL, &UARTTask1_attributes);
+
+  /* creation of MotorCtrlTasK1 */
+  MotorCtrlTasK1Handle = osThreadNew(MotorCtrl_TasK, (void*) &Motor_1, &MotorCtrlTasK1_attributes);
+
+  /* creation of MotorCtrlTasK2 */
+  MotorCtrlTasK2Handle = osThreadNew(MotorCtrl_TasK, (void*) &Motor_2, &MotorCtrlTasK2_attributes);
+
+  /* creation of MotorCtrlTasK3 */
+  MotorCtrlTasK3Handle = osThreadNew(MotorCtrl_TasK, (void*) &Motor_3, &MotorCtrlTasK3_attributes);
+
+  /* creation of MotorCtrlTasK4 */
+  MotorCtrlTasK4Handle = osThreadNew(MotorCtrl_TasK, (void*) &Motor_4, &MotorCtrlTasK4_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+	HAL_TIM_Encoder_Start(&htim8, TIM_CHANNEL_ALL);
+	HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+	HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+	HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
+
   /* USER CODE END RTOS_EVENTS */
 
   /* Start scheduler */
@@ -329,6 +476,204 @@ static void MX_I2C2_Init(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65535;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim3, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM8 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM8_Init(void)
+{
+
+  /* USER CODE BEGIN TIM8_Init 0 */
+
+  /* USER CODE END TIM8_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM8_Init 1 */
+
+  /* USER CODE END TIM8_Init 1 */
+  htim8.Instance = TIM8;
+  htim8.Init.Prescaler = 0;
+  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim8.Init.Period = 65535;
+  htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim8.Init.RepetitionCounter = 0;
+  htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim8, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM8_Init 2 */
+
+  /* USER CODE END TIM8_Init 2 */
+
+}
+
+/**
   * @brief UART4 Initialization Function
   * @param None
   * @retval None
@@ -397,6 +742,39 @@ static void MX_UART5_Init(void)
 }
 
 /**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -411,19 +789,36 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(DebugIO_GPIO_Port, DebugIO_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PB12 */
-  GPIO_InitStruct.Pin = GPIO_PIN_12;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_1_Pin|MotorDirectionControl_IO2_1_Pin|MotorDirectionControl_IO2_2_Pin|MotorDirectionControl_IO1_1_Pin
+                          |MotorDirectionControl_IO1_2_Pin|MotorDirectionControl_IO4_1_Pin|MotorDirectionControl_IO4_2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(MotorDirectionControl_IO3_2_GPIO_Port, MotorDirectionControl_IO3_2_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin : DebugIO_Pin */
+  GPIO_InitStruct.Pin = DebugIO_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(DebugIO_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : MotorDirectionControl_IO3_1_Pin MotorDirectionControl_IO3_2_Pin MotorDirectionControl_IO2_1_Pin MotorDirectionControl_IO2_2_Pin
+                           MotorDirectionControl_IO1_1_Pin MotorDirectionControl_IO1_2_Pin MotorDirectionControl_IO4_1_Pin MotorDirectionControl_IO4_2_Pin */
+  GPIO_InitStruct.Pin = MotorDirectionControl_IO3_1_Pin|MotorDirectionControl_IO3_2_Pin|MotorDirectionControl_IO2_1_Pin|MotorDirectionControl_IO2_2_Pin
+                          |MotorDirectionControl_IO1_1_Pin|MotorDirectionControl_IO1_2_Pin|MotorDirectionControl_IO4_1_Pin|MotorDirectionControl_IO4_2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -658,6 +1053,15 @@ void Jetson_Task(void *argument)
   {
     // 100Hz通信速率，即每10ms执行一次循环
     // 数据接收由中断处理，这里可以做其他事情
+
+    // 更新所有电机数据到综合姿态信息
+    extern void UpdateMotorData(int8_t dir1, int8_t dir2, int8_t dir3, int8_t dir4,
+                               float rpm1, float rpm2, float rpm3, float rpm4);
+    UpdateMotorData(all_motors[0].direction, all_motors[1].direction,
+                   all_motors[2].direction, all_motors[3].direction,
+                   all_motors[0].speed_rpm, all_motors[1].speed_rpm,
+                   all_motors[2].speed_rpm, all_motors[3].speed_rpm);
+
     osDelay(10);
 
     // 检查接收超时并处理
@@ -679,6 +1083,297 @@ void Jetson_Task(void *argument)
     }
   }
   /* USER CODE END Jetson_Task */
+}
+
+/* USER CODE BEGIN Header_MotorSpeedTask */
+/**
+* @brief Function implementing the MotorTask1 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_MotorSpeedTask */
+void MotorSpeedTask(void *argument)
+{
+  /* USER CODE BEGIN MotorSpeedTask */
+  /* Infinite loop */
+
+			 // 定义TIM句柄数组
+	  	TIM_HandleTypeDef* tim_handles[] = { NULL,&htim1, &htim2,&htim3,&htim8};//NULL只是用来占位的
+		// 定义结构体实例,互斥访问时需要放到函数里
+			Motor_Status_t motor_n20 = { ((Motor_Status_t*)argument)->dev,0,0,0,0 };
+			uint8_t Motor_id=motor_n20.dev;//(1~4)
+			TIM_HandleTypeDef* tim_handles_self=tim_handles[Motor_id];
+
+    // 初始化上一次计数器值为当前值，防止第一次计算出错
+    motor_n20.last_counter = __HAL_TIM_GET_COUNTER(tim_handles_self);
+
+    // 获取当前 Tick 时间，用于精确延时(即作为vTaskDelayUntil的延时起点,记录的是上一个周期理论唤醒时间,这个值会被vTaskDelayUntil更新),这个时间是从SystemTick里面读的
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    TickType_t xFrequency = pdMS_TO_TICKS(SPEED_SAMPLE_TIME_MS);  //将周期的单位转换为tick
+
+    while (1)
+    {
+ 
+            // ================= A. 数据采集 =================
+            // 根据Motor_id选择对应的TIM
+            uint16_t current_cnt = __HAL_TIM_GET_COUNTER(tim_handles[Motor_id]);
+        
+            // ================= B. 核心解算 =================
+            
+            // 1. 计算增量 (Delta)
+            int16_t delta = (int16_t)(current_cnt - motor_n20.last_counter);
+            
+            // 更新状态结构体
+            motor_n20.encode_delta = delta;
+            motor_n20.last_counter = current_cnt;
+            motor_n20.total_count += delta; // 如果需要记录跑了多远
+            
+            // 2. 计算 RPM (转速)
+            float rpm = ((float)delta) * (60000.0f / SPEED_SAMPLE_TIME_MS) / PULSES_PER_REV_OUTPUT;
+            motor_n20.speed_rpm = rpm;
+            
+            // 3. 判断方向
+            if (delta > 0) {
+                motor_n20.direction = 1;
+            }
+            else if (delta < 0) {
+                motor_n20.direction = -1;
+            }
+            else {
+                motor_n20.direction = 0;
+            }
+            
+            /* 将结构体写入队列 */
+            osMessageQueuePut(MotorQueueHandle, &motor_n20, NULL, osWaitForever);
+            
+            // 更新电机数据到综合姿态信息
+            extern void UpdateSingleMotorData(uint8_t motor_id, int8_t direction, float speed_rpm);
+            // 根据当前任务的设备ID来确定更新哪个电机的数据
+            UpdateSingleMotorData(motor_n20.dev - 1, motor_n20.direction, motor_n20.speed_rpm);
+            
+            // 同时更新全局电机状态数组
+            all_motors[motor_n20.dev - 1] = motor_n20;
+            
+            // ================= C. 任务调度 =================
+            // 使用 vTaskDelayUntil 保证采样的绝对周期性
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        }
+        
+
+  /* USER CODE END MotorSpeedTask */
+}
+
+/* USER CODE BEGIN Header_UART_Task1 */
+/**
+* @brief Function implementing the UARTTask1 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_UART_Task1 */
+void UART_Task1(void *argument)
+{
+  /* USER CODE BEGIN UART_Task1 */
+  /* Infinite loop */
+    Motor_Status_t MotorDataStructure_tx;
+    (void)argument; // 避免未使用参数警告，根据CMSIS标准
+
+    while(1) {
+        // 接收 - 注意：portMAX_DELAY 是 FreeRTOS 宏，CMSIS 应使用 osWaitForever
+        if(osMessageQueueGet(MotorQueueHandle, &MotorDataStructure_tx, NULL, osWaitForever) == osOK) {
+
+            // 方法1: 发送RPM的原始浮点值（4字节）
+            union {
+                float rpm_float;
+                uint8_t rpm_bytes[4];
+            } rpm_converter;
+
+            rpm_converter.rpm_float = MotorDataStructure_tx.speed_rpm;
+
+            // 添加安全检查，确保只发送有效的数据
+            if(osMutexAcquire(UART1Handle, osWaitForever) == osOK) {
+                // 检查是否包含可能的无效值（如0xA5），如果四个字节都是0xA5则跳过发送
+                uint8_t invalid_pattern[] = {0xA5, 0xA5, 0xA5, 0xA5};
+                if(memcmp(rpm_converter.rpm_bytes, invalid_pattern, 4) != 0) {
+                    // 发送4字节的浮点数RPM值
+                    HAL_StatusTypeDef status = HAL_UART_Transmit(&huart1, rpm_converter.rpm_bytes, 4, HAL_MAX_DELAY);
+
+                    // 检查传输状态
+                    if(status != HAL_OK) {
+                        // 可以在这里添加错误处理
+                        // 例如：通过调试串口输出错误信息
+                        char errorMsg[] = "UART1 transmit error\r\n";
+                        // HAL_UART_Transmit(&huart4, (uint8_t*)errorMsg, strlen(errorMsg), 0xFFFF);
+                    }
+                }
+
+                // 也可以同时发送编码器增量值
+                // HAL_UART_Transmit(&huart1, (uint8_t*)&MotorDataStructure_tx.encode_delta, 2, HAL_MAX_DELAY);
+
+                osMutexRelease(UART1Handle);
+            }
+
+            // 方法2: 如果只需要发送整数部分，可以保留原来的实现方式
+            // uint16_t rpm_int = (uint16_t)(MotorDataStructure_tx.speed_rpm * 100); // 乘以100保留两位小数
+            // uint8_t speed_rpm_H = (rpm_int >> 8) & 0xFF;
+            // uint8_t speed_rpm_L = rpm_int & 0xFF;
+        }
+    }
+  /* USER CODE END UART_Task1 */
+}
+
+/* USER CODE BEGIN Header_MotorCtrl_TasK */
+/**
+* @brief Function implementing the MotorCtrlTasK thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_MotorCtrl_TasK */
+void MotorCtrl_TasK(void *argument)
+{
+  /* USER CODE BEGIN MotorCtrl_TasK */
+  /* Infinite loop */
+	uint8_t motor_id=*(uint8_t*)argument;
+  for(;;)
+  {
+    // 获取上位机发来的电机命令
+    uint8_t motor_cmd = GetMotorCommandType(motor_id);  // 获取对应编号电机的命令类型
+
+
+    switch(motor_id) {
+      case 0:  //电机1
+			{
+				switch(motor_cmd)
+				{
+					case 0:  // 快刹车
+					HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_1_Pin, GPIO_PIN_RESET); 
+					HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_2_Pin, GPIO_PIN_RESET);  
+					break;
+
+					case 1:  // 快刹车 - PD8和PD9都输出高电平
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_1_Pin, GPIO_PIN_SET);    
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_2_Pin, GPIO_PIN_SET);    
+						break;
+
+					case 2:  // 反转 - PD8低电平，PD9高电平
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_1_Pin, GPIO_PIN_RESET);  
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_2_Pin, GPIO_PIN_SET);    
+						break;
+
+					case 3:  // 正转 - PD8高电平，PD9低电平
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_1_Pin, GPIO_PIN_SET);    
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_2_Pin, GPIO_PIN_RESET); 
+						break;
+
+					default:  // 默认情况，停止电机
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_1_Pin, GPIO_PIN_RESET);  
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO1_2_Pin, GPIO_PIN_RESET);  
+						break;
+				
+				}
+				break;
+			}
+      case 1:   //电机2
+			{
+				switch(motor_cmd)
+				{
+					case 0:  // 快刹车
+					HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_1_Pin, GPIO_PIN_RESET);  
+					HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_2_Pin, GPIO_PIN_RESET); 
+					break;
+
+					case 1:  // 快刹车 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_1_Pin, GPIO_PIN_SET);   
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_2_Pin, GPIO_PIN_SET);   
+						break;
+
+					case 2:  // 反转 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_1_Pin, GPIO_PIN_RESET);  //
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_2_Pin, GPIO_PIN_SET);    //
+						break;
+
+					case 3:  // 正转 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_1_Pin, GPIO_PIN_SET);    // 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_2_Pin, GPIO_PIN_RESET);  // 
+						break;
+
+					default:  // 默认情况，停止电机
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_1_Pin, GPIO_PIN_RESET);  //
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO2_2_Pin, GPIO_PIN_RESET);  // 
+						break;
+				
+				}
+				break;
+			}
+      case 2:   //电机3
+			{
+				switch(motor_cmd)
+				{
+					case 0:  // 快刹车 - PD8和PD9都输出高电平
+					HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_1_Pin, GPIO_PIN_RESET);  //
+					HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_2_Pin, GPIO_PIN_RESET);  // 
+					break;
+
+					case 1:  // 快刹车 - PD8和PD9都输出高电平
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_1_Pin, GPIO_PIN_SET);    // 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_2_Pin, GPIO_PIN_SET);    // 
+						break;
+
+					case 2:  // 反转 - PD8低电平，PD9高电平
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_1_Pin, GPIO_PIN_RESET);  // 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_2_Pin, GPIO_PIN_SET);    // 
+						break;
+
+					case 3:  // 正转 - PD8高电平，PD9低电平
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_1_Pin, GPIO_PIN_SET);    // 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_2_Pin, GPIO_PIN_RESET);  //
+						break;
+
+					default:  // 默认情况，停止电机
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_1_Pin, GPIO_PIN_RESET);  //
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO3_2_Pin, GPIO_PIN_RESET);  // 
+						break;
+				
+				}
+				break;
+			}
+      case 3:   //电机4
+			{
+				switch(motor_cmd)
+				{
+					case 0:  // 快刹车 
+					HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_1_Pin, GPIO_PIN_RESET);  //
+					HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_2_Pin, GPIO_PIN_RESET);  //
+					break;
+
+					case 1:  // 快刹车 - PD8和PD9都输出高电平
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_1_Pin, GPIO_PIN_SET);    // 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_2_Pin, GPIO_PIN_SET);    // 
+						break;
+
+					case 2:  // 反转 - PD8低电平，PD9高电平
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_1_Pin, GPIO_PIN_RESET);  // 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_2_Pin, GPIO_PIN_SET);    // 
+						break;
+
+					case 3:  // 正转 - PD8高电平，PD9低电平
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_1_Pin, GPIO_PIN_SET);    // 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_2_Pin, GPIO_PIN_RESET);  // 
+						break;
+
+					default:  // 默认情况，停止电机
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_1_Pin, GPIO_PIN_RESET);  // 
+						HAL_GPIO_WritePin(GPIOD, MotorDirectionControl_IO4_2_Pin, GPIO_PIN_RESET);  //
+						break;
+				
+				}
+				break;
+			}
+
+    }
+
+    osDelay(10);  // 10ms检查一次命令状态
+  }
+  /* USER CODE END MotorCtrl_TasK */
 }
 
 /**

@@ -123,6 +123,20 @@ uint8_t CheckPoseChanged(void);
 void UpdateIMUData(float accel_x, float accel_y, float accel_z,
                    float gyro_x, float gyro_y, float gyro_z,
                    float temperature);
+
+// 更新电机数据
+void UpdateMotorData(int8_t dir1, int8_t dir2, int8_t dir3, int8_t dir4,
+                     float rpm1, float rpm2, float rpm3, float rpm4);
+
+// 更新单个电机数据
+void UpdateSingleMotorData(uint8_t motor_id, int8_t direction, float speed_rpm);
+
+// 获取上位机发来的电机控制命令
+void GetMotorCommand(uint8_t motor_id, int8_t *direction, float *speed_rpm);
+
+// 获取上位机发来的电机命令类型
+uint8_t GetMotorCommandType(uint8_t motor_id);
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
