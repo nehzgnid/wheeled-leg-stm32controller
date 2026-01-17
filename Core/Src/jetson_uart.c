@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "cmsis_os.h"  // 添加FreeRTOS头文件以使用互斥锁
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -63,11 +64,21 @@ typedef struct {
 } IMUData_t;
 
 /**
- * @brief 综合姿态信息结构体（舵机+IMU）
+ * @brief 电机数据结构体
+ */
+typedef struct {
+    int8_t direction[4];          /*!< 4个电机的转向 (1:正转, -1:反转, 0:停止) */
+    float speed_rpm[4];           /*!< 4个电机的转速 (RPM) */
+    uint32_t timestamp;           /*!< 时间戳 */
+} MotorData_t;
+
+/**
+ * @brief 综合姿态信息结构体（舵机+IMU+电机）
  */
 typedef struct {
     MultiServoPose_t servo_pose;  /*!< 舵机姿态 */
     IMUData_t imu_data;           /*!< IMU数据 */
+    MotorData_t motor_data;       /*!< 电机数据 */
     uint32_t timestamp;           /*!< 综合时间戳 */
 } ComprehensivePose_t;
 
@@ -99,7 +110,15 @@ static const uint32_t RECEIVE_TIMEOUT_MS = 200;  /*!< 接收超时时间 (200ms)
 static MultiServoPose_t current_pose = {0};     /*!< 当前舵机姿态 */
 static uint32_t last_pose_update = 0;           /*!< 上次姿态更新时间 */
 
-static ComprehensivePose_t comprehensive_pose = {0};  /*!< 综合姿态信息（舵机+IMU） */
+static ComprehensivePose_t comprehensive_pose = {0};  /*!< 综合姿态信息（舵机+IMU+电机） */
+
+// 存储上位机发来的电机控制命令
+static int8_t motor_cmd_direction[4] = {0};  /*!< 上位机发来的电机转向命令 */
+static float motor_cmd_speed[4] = {0.0f};   /*!< 上位机发来的电机转速命令 */
+static uint8_t motor_cmd_type[4] = {0};     /*!< 上位机发来的电机命令类型 (0=慢刹车, 1=快刹车, 2=反转, 3=正转) */
+
+// 电机命令数组的互斥锁，用于保护中断和任务之间的数据访问
+static osMutexId_t motor_cmd_mutex = NULL;
 
 /* USER CODE END PV */
 
@@ -267,15 +286,122 @@ HAL_StatusTypeDef ParseServoControlMessage(uint8_t *buffer, uint8_t length)
 }
 
 /**
+ * @brief 解析电机控制消息
+ * @param buffer 消息缓冲区
+ * @param length 消息长度
+ * @return HAL_StatusTypeDef HAL_OK 成功，HAL_ERROR 失败
+ *
+ * 消息格式: "MOTOR,<motor_id>,<command>,<speed_rpm>\n"
+ * command: 0=慢刹车, 1=快刹车, 2=反转, 3=正转
+ * 例如: "MOTOR,0,3,50.5\n" - 控制0号电机正转，转速50.5 RPM
+ */
+HAL_StatusTypeDef ParseMotorControlMessage(uint8_t *buffer, uint8_t length)
+{
+    if(buffer == NULL || length == 0) {
+        return HAL_ERROR;
+    }
+
+    // 简单解析消息（实际应用中应使用更健壮的解析方法）
+    char msg_str[128];
+    if(length >= sizeof(msg_str)) {
+        return HAL_ERROR; // 消息太长
+    }
+
+    // 复制到临时字符串
+    for(int i = 0; i < length && i < sizeof(msg_str)-1; i++) {
+        msg_str[i] = (char)buffer[i];
+    }
+    msg_str[length] = '\0';
+
+    // 检查消息头
+    if(strncmp(msg_str, "MOTOR,", 6) != 0) {
+        return HAL_ERROR; // 不是电机控制消息
+    }
+
+    // 解析参数
+    char *token = strtok(msg_str, ",");
+    if(token == NULL || strcmp(token, "MOTOR") != 0) {
+        return HAL_ERROR;
+    }
+
+    // 解析电机ID
+    token = strtok(NULL, ",");
+    if(token == NULL) {
+        return HAL_ERROR;
+    }
+    uint8_t motor_id = atoi(token);
+
+    // 解析命令
+    token = strtok(NULL, ",");
+    if(token == NULL) {
+        return HAL_ERROR;
+    }
+    uint8_t command = (uint8_t)atoi(token);
+
+    // 解析转速
+    token = strtok(NULL, ",");
+    if(token == NULL) {
+        return HAL_ERROR;
+    }
+    float speed_rpm = atof(token);
+
+    // 限制范围
+    if(motor_id >= 4 || command > 3) {
+        return HAL_ERROR;
+    }
+
+    // 将命令转换为内部表示
+    int8_t direction = 0;  // 默认停止
+    switch(command) {
+        case 0:  // 慢刹车
+            direction = 0;  // 停止，但可能需要特殊的慢刹车逻辑
+            speed_rpm = 0.0f;
+            break;
+        case 1:  // 快刹车
+            direction = 0;  // 停止，但可能需要特殊的快刹车逻辑
+            speed_rpm = 0.0f;
+            break;
+        case 2:  // 反转
+            direction = -1;
+            break;
+        case 3:  // 正转
+            direction = 1;
+            break;
+        default:
+            return HAL_ERROR;
+    }
+
+    // 存储上位机发来的电机控制命令（使用原子操作保护）
+    if(motor_id < 4) {
+        // 在中断中禁用中断以保护数据一致性
+        uint32_t primask = __get_PRIMASK();
+        __disable_irq();
+
+        motor_cmd_direction[motor_id] = direction;
+        motor_cmd_speed[motor_id] = speed_rpm;
+        motor_cmd_type[motor_id] = command;  // 存储原始命令类型
+
+        // 恢复中断状态
+        __set_PRIMASK(primask);
+    }
+
+    // 这里可以添加对电机的控制逻辑（目前只更新内部状态）
+    // extern void ControlMotor(uint8_t motor_id, int8_t direction, float speed_rpm);
+    // ControlMotor(motor_id, direction, speed_rpm);
+
+    return HAL_OK;
+}
+
+/**
  * @brief 发送当前姿态消息
  * @return HAL_StatusTypeDef HAL_OK 成功，其他值 失败
  *
- * 消息格式: "POSE,<servo0>,<servo1>,...,<servo15>,<timestamp>,<accel_x>,<accel_y>,<accel_z>,<gyro_x>,<gyro_y>,<gyro_z>,<temperature>\n"
+ * 消息格式: "POSE,<servo0>,<servo1>,...,<servo15>,<timestamp>,<accel_x>,<accel_y>,<accel_z>,<gyro_x>,<gyro_y>,<gyro_z>,<temperature>,<dir1>,<dir2>,<dir3>,<dir4>,<rpm1>,<rpm2>,<rpm3>,<rpm4>\n"
  */
 HAL_StatusTypeDef SendCurrentPose(void)
 {
-    char pose_msg[256];
-    sprintf(pose_msg, "POSE,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%lu,%f,%f,%f,%f,%f,%f,%f\n",
+    char pose_msg[512]; // 增大缓冲区以容纳更多数据
+    sprintf(pose_msg, "POSE,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%lu,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f\n",
             comprehensive_pose.servo_pose.angles[0], comprehensive_pose.servo_pose.angles[1],
             comprehensive_pose.servo_pose.angles[2], comprehensive_pose.servo_pose.angles[3],
             comprehensive_pose.servo_pose.angles[4], comprehensive_pose.servo_pose.angles[5],
@@ -287,7 +413,11 @@ HAL_StatusTypeDef SendCurrentPose(void)
             comprehensive_pose.servo_pose.timestamp,
             comprehensive_pose.imu_data.accel_x_g, comprehensive_pose.imu_data.accel_y_g, comprehensive_pose.imu_data.accel_z_g,
             comprehensive_pose.imu_data.gyro_x_dps, comprehensive_pose.imu_data.gyro_y_dps, comprehensive_pose.imu_data.gyro_z_dps,
-            comprehensive_pose.imu_data.temperature_c);
+            comprehensive_pose.imu_data.temperature_c,
+            comprehensive_pose.motor_data.direction[0], comprehensive_pose.motor_data.direction[1],
+            comprehensive_pose.motor_data.direction[2], comprehensive_pose.motor_data.direction[3],
+            comprehensive_pose.motor_data.speed_rpm[0], comprehensive_pose.motor_data.speed_rpm[1],
+            comprehensive_pose.motor_data.speed_rpm[2], comprehensive_pose.motor_data.speed_rpm[3]);
 
     return HAL_UART_Transmit(&huart5, (uint8_t*)pose_msg, strlen(pose_msg), 0xFFFF);
 }
@@ -360,6 +490,78 @@ void UpdateIMUData(float accel_x, float accel_y, float accel_z,
     comprehensive_pose.timestamp = HAL_GetTick();
 }
 
+// 更新电机数据
+void UpdateMotorData(int8_t dir1, int8_t dir2, int8_t dir3, int8_t dir4,
+                     float rpm1, float rpm2, float rpm3, float rpm4)
+{
+    // 一次性更新所有电机数据
+    comprehensive_pose.motor_data.direction[0] = dir1;
+    comprehensive_pose.motor_data.direction[1] = dir2;
+    comprehensive_pose.motor_data.direction[2] = dir3;
+    comprehensive_pose.motor_data.direction[3] = dir4;
+
+    comprehensive_pose.motor_data.speed_rpm[0] = rpm1;
+    comprehensive_pose.motor_data.speed_rpm[1] = rpm2;
+    comprehensive_pose.motor_data.speed_rpm[2] = rpm3;
+    comprehensive_pose.motor_data.speed_rpm[3] = rpm4;
+
+    comprehensive_pose.motor_data.timestamp = HAL_GetTick();
+    comprehensive_pose.timestamp = HAL_GetTick(); // 更新整体时间戳
+}
+
+// 更新单个电机数据
+void UpdateSingleMotorData(uint8_t motor_id, int8_t direction, float speed_rpm)
+{
+    if(motor_id < 4) {
+        comprehensive_pose.motor_data.direction[motor_id] = direction;
+        comprehensive_pose.motor_data.speed_rpm[motor_id] = speed_rpm;
+
+        comprehensive_pose.motor_data.timestamp = HAL_GetTick();
+        comprehensive_pose.timestamp = HAL_GetTick(); // 更新整体时间戳
+    }
+}
+
+// 获取上位机发来的电机控制命令
+void GetMotorCommand(uint8_t motor_id, int8_t *direction, float *speed_rpm)
+{
+    if(motor_id < 4 && direction != NULL && speed_rpm != NULL) {
+        // 获取互斥锁
+        if (motor_cmd_mutex != NULL) {
+            osMutexAcquire(motor_cmd_mutex, osWaitForever);
+        }
+
+        *direction = motor_cmd_direction[motor_id];
+        *speed_rpm = motor_cmd_speed[motor_id];
+
+        // 释放互斥锁
+        if (motor_cmd_mutex != NULL) {
+            osMutexRelease(motor_cmd_mutex);
+        }
+    }
+}
+
+// 获取上位机发来的电机命令类型
+uint8_t GetMotorCommandType(uint8_t motor_id)
+{
+    uint8_t result = 0; // 默认返回慢刹车
+
+    if(motor_id < 4) {
+        // 获取互斥锁
+        if (motor_cmd_mutex != NULL) {
+            osMutexAcquire(motor_cmd_mutex, osWaitForever);
+        }
+
+        result = motor_cmd_type[motor_id];
+
+        // 释放互斥锁
+        if (motor_cmd_mutex != NULL) {
+            osMutexRelease(motor_cmd_mutex);
+        }
+    }
+
+    return result;
+}
+
 /* USER CODE END 4 */
 
 /**
@@ -371,6 +573,17 @@ HAL_StatusTypeDef JetsonUart_Init(void)
     // 初始化接收缓冲区
     uart5_rx_index = 0;
     uart5_frame_complete = 0;
+
+    // 创建电机命令数组的互斥锁
+    if (motor_cmd_mutex == NULL) {
+        const osMutexAttr_t mutex_attr = {
+            .name = "MotorCmdMutex"
+        };
+        motor_cmd_mutex = osMutexNew(&mutex_attr);
+        if (motor_cmd_mutex == NULL) {
+            return HAL_ERROR;  // 互斥锁创建失败
+        }
+    }
 
     return HAL_OK;
 }
@@ -445,13 +658,16 @@ HAL_StatusTypeDef Jetson_ProcessReceivedData(uint8_t *data, uint8_t length)
 
             // 尝试解析为舵机控制消息
             if(ParseServoControlMessage(uart5_rx_buffer, uart5_rx_index-2) != HAL_OK) { // -2 to exclude \r\n
-                // 如果不是舵机控制消息，可以选择输出或忽略
-                // 对于调试，可以取消下面的注释
-                /*
-                char debug_msg[260];  // 调整缓冲区大小以适应可能的完整消息
-                sprintf(debug_msg, "Unknown command: %s", uart5_rx_buffer);
-                HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
-                */
+                // 如果不是舵机控制消息，尝试解析为电机控制消息
+                if(ParseMotorControlMessage(uart5_rx_buffer, uart5_rx_index-2) != HAL_OK) {
+                    // 如果都不是，可以选择输出或忽略
+                    // 对于调试，可以取消下面的注释
+                    /*
+                    char debug_msg[260];  // 调整缓冲区大小以适应可能的完整消息
+                    sprintf(debug_msg, "Unknown command: %s", uart5_rx_buffer);
+                    HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
+                    */
+                }
             }
 
             // 这里可以添加消息处理逻辑
@@ -468,13 +684,16 @@ HAL_StatusTypeDef Jetson_ProcessReceivedData(uint8_t *data, uint8_t length)
 
             // 尝试解析为舵机控制消息
             if(ParseServoControlMessage(uart5_rx_buffer, uart5_rx_index-1) != HAL_OK) { // -1 to exclude \n
-                // 如果不是舵机控制消息，可以选择输出或忽略
-                // 对于调试，可以取消下面的注释
-                /*
-                char debug_msg[260];
-                sprintf(debug_msg, "Unknown command: %s", uart5_rx_buffer);
-                HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
-                */
+                // 如果不是舵机控制消息，尝试解析为电机控制消息
+                if(ParseMotorControlMessage(uart5_rx_buffer, uart5_rx_index-1) != HAL_OK) {
+                    // 如果都不是，可以选择输出或忽略
+                    // 对于调试，可以取消下面的注释
+                    /*
+                    char debug_msg[260];
+                    sprintf(debug_msg, "Unknown command: %s", uart5_rx_buffer);
+                    HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
+                    */
+                }
             }
 
             // 重置接收索引
