@@ -140,6 +140,24 @@ uint8_t GetMotorCommandType(uint8_t motor_id);
 // 持续更新舵机角度，实现按时间平滑移动
 void Servo_UpdateAll(void);
 
+// 批量舵机控制命令结构体
+typedef struct {
+    uint8_t servo_id;         // 舵机ID
+    uint8_t angle;            // 目标角度
+    uint16_t duration;        // 持续时间(ms)，0表示立即执行
+} BatchServoCmd_t;
+
+// 批量舵机控制结构体
+typedef struct {
+    BatchServoCmd_t commands[16];  // 最多支持16个舵机
+    uint8_t count;                 // 实际舵机数量
+    uint32_t start_time;           // 开始时间
+    uint8_t executing;             // 是否正在执行
+} BatchServoControl_t;
+
+// 解析批量舵机控制消息
+HAL_StatusTypeDef ParseBatchServoControlMessage(uint8_t *buffer, uint8_t length);
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

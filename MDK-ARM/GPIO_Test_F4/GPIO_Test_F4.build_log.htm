@@ -27,10 +27,26 @@ Project File Date:  01/17/2026
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'C:\keil5\ARM\ARMCC\Bin'
 Build target 'GPIO_Test_F4'
+compiling jetson_uart.c...
+../Core/Inc/jetson_uart.h(172): warning:  #1-D: last line of file ends without a newline
+  #endif /* __JETSON_UART_H */
+..\Core\Src\jetson_uart.c(932): warning:  #1-D: last line of file ends without a newline
+  /* USER CODE END 1 */
+..\Core\Src\jetson_uart.c(102): warning:  #550-D: variable "uart5_frame_complete"  was set but never used
+  static uint8_t uart5_frame_complete = 0; /*!< 帧完成标�? */
+..\Core\Src\jetson_uart.c(103): warning:  #177-D: variable "uart5_rx_data"  was declared but never referenced
+  static uint8_t uart5_rx_data;           /*!< UART5接收数据 */
+..\Core\Src\jetson_uart.c(105): warning:  #177-D: variable "received_msg"  was declared but never referenced
+  static JetsonMessage_t received_msg;     /*!< 用于接收消息的临时缓冲区 */
+..\Core\Src\jetson_uart.c(110): warning:  #550-D: variable "current_pose"  was set but never used
+  static MultiServoPose_t current_pose = {0};     /*!< 当前舵机姿�? */
+..\Core\Src\jetson_uart.c(111): warning:  #550-D: variable "last_pose_update"  was set but never used
+  static uint32_t last_pose_update = 0;           /*!< 上次姿态更新时�? */
+..\Core\Src\jetson_uart.c: 7 warnings, 0 errors
 compiling main.c...
 ../Core/Inc/pca9685.h(25): warning:  #1-D: last line of file ends without a newline
   #endif
-../Core/Inc/jetson_uart.h(154): warning:  #1-D: last line of file ends without a newline
+../Core/Inc/jetson_uart.h(172): warning:  #1-D: last line of file ends without a newline
   #endif /* __JETSON_UART_H */
 ../Core/Src/main.c(1165): warning:  #177-D: variable "uart_send_buf"  was declared but never referenced
     char uart_send_buf[50];
@@ -38,9 +54,9 @@ compiling main.c...
                           char errorMsg[] = "UART1 transmit error\r\n";
 ../Core/Src/main.c: 4 warnings, 0 errors
 linking...
-Program Size: Code=38004 RO-data=1920 RW-data=328 ZI-data=40272  
+Program Size: Code=38356 RO-data=1920 RW-data=328 ZI-data=40352  
 FromELF: creating hex file...
-"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 4 Warning(s).
+"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 11 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -62,7 +78,7 @@ Package Vendor: Keil
 <h2>Collection of Component Files used:</h2>
 
    * Component: ARM::CMSIS:CORE@6.1.1
-Build Time Elapsed:  00:00:02
+Build Time Elapsed:  00:00:03
 </pre>
 </body>
 </html>

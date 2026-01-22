@@ -134,6 +134,9 @@ static ServoMotion_t servo_motion[16] = {0};  // 16个舵机的运动状态
 // 舵机当前角度跟踪 - 用于平滑移动的起始角度
 static uint8_t servo_current_angles[16] = {0}; // 16个舵机的当前角度
 
+// 批量舵机控制状态
+static BatchServoControl_t batch_servo_control = {0};  // 批量舵机控制状态
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -307,6 +310,110 @@ HAL_StatusTypeDef ParseServoControlMessage(uint8_t *buffer, uint8_t length)
         servo_motion[servo_id].duration = duration;
         servo_motion[servo_id].start_time = HAL_GetTick();
         servo_motion[servo_id].moving = 1;
+    }
+
+    return HAL_OK;
+}
+
+/**
+ * @brief 解析批量舵机控制消息
+ * @param buffer 消息缓冲区
+ * @param length 消息长度
+ * @return HAL_StatusTypeDef HAL_OK 成功，HAL_ERROR 失败
+ *
+ * 消息格式: "BATCH_SERVO,<servo_id1>,<angle1>,<duration>,<servo_id2>,<angle2>,<duration>,...\n"
+ * 例如: "BATCH_SERVO,0,90,1000,1,45,1000,2,135,1000\n" - 同时控制0、1、2号舵机在1秒内移动到指定角度
+ */
+HAL_StatusTypeDef ParseBatchServoControlMessage(uint8_t *buffer, uint8_t length)
+{
+    if(buffer == NULL || length == 0) {
+        return HAL_ERROR;
+    }
+
+    // 简单解析消息（实际应用中应使用更健壮的解析方法）
+    char msg_str[256];
+    if(length >= sizeof(msg_str)) {
+        return HAL_ERROR; // 消息太长
+    }
+
+    // 复制到临时字符串
+    for(int i = 0; i < length && i < sizeof(msg_str)-1; i++) {
+        msg_str[i] = (char)buffer[i];
+    }
+    msg_str[length] = '\0';
+
+    // 检查消息头
+    if(strncmp(msg_str, "BATCH_SERVO,", 12) != 0) {
+        return HAL_ERROR; // 不是批量舵机控制消息
+    }
+
+    // 解析参数
+    char *token = strtok(msg_str, ",");
+    if(token == NULL || strcmp(token, "BATCH_SERVO") != 0) {
+        return HAL_ERROR;
+    }
+
+    // 重置批量控制结构
+    memset(&batch_servo_control, 0, sizeof(BatchServoControl_t));
+
+    // 解析舵机ID、角度和持续时间
+    uint8_t index = 0;
+    while((token = strtok(NULL, ",")) != NULL && index < 16) {
+        // 解析舵机ID
+        uint8_t servo_id = atoi(token);
+        if(servo_id >= 16) {
+            return HAL_ERROR; // 舵机ID超出范围
+        }
+
+        // 解析角度
+        token = strtok(NULL, ",");
+        if(token == NULL) {
+            return HAL_ERROR;
+        }
+        uint8_t angle = atoi(token);
+        if(angle > 180) {
+            return HAL_ERROR; // 角度超出范围
+        }
+
+        // 解析持续时间
+        token = strtok(NULL, ",");
+        if(token == NULL) {
+            return HAL_ERROR;
+        }
+        uint16_t duration = atoi(token);
+
+        // 存储到批量控制结构
+        batch_servo_control.commands[index].servo_id = servo_id;
+        batch_servo_control.commands[index].angle = angle;
+        batch_servo_control.commands[index].duration = duration;
+        index++;
+    }
+
+    batch_servo_control.count = index;
+    batch_servo_control.start_time = HAL_GetTick();
+    batch_servo_control.executing = 1;
+
+    // 设置所有参与批量控制的舵机的运动状态
+    for(uint8_t i = 0; i < batch_servo_control.count; i++) {
+        uint8_t servo_id = batch_servo_control.commands[i].servo_id;
+        uint8_t target_angle = batch_servo_control.commands[i].angle;
+        uint16_t duration = batch_servo_control.commands[i].duration;
+
+        if(duration == 0) {
+            // 立即执行
+            extern I2C_HandleTypeDef hi2c2;
+            extern void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle);
+            PCA9685_SetAngle(&hi2c2, servo_id, target_angle);
+            servo_current_angles[servo_id] = target_angle;
+            servo_motion[servo_id].moving = 0;
+        } else {
+            // 设置运动参数，使用当前角度作为起始角度
+            servo_motion[servo_id].start_angle = servo_current_angles[servo_id];
+            servo_motion[servo_id].target_angle = target_angle;
+            servo_motion[servo_id].duration = duration;
+            servo_motion[servo_id].start_time = batch_servo_control.start_time;
+            servo_motion[servo_id].moving = 1;
+        }
     }
 
     return HAL_OK;
@@ -710,17 +817,20 @@ HAL_StatusTypeDef Jetson_ProcessReceivedData(uint8_t *data, uint8_t length)
             uart5_rx_buffer[uart5_rx_index] = '\0'; // 添加字符串结束符
             uart5_frame_complete = 1;
 
-            // 尝试解析为舵机控制消息
-            if(ParseServoControlMessage(uart5_rx_buffer, uart5_rx_index-2) != HAL_OK) { // -2 to exclude \r\n
-                // 如果不是舵机控制消息，尝试解析为电机控制消息
-                if(ParseMotorControlMessage(uart5_rx_buffer, uart5_rx_index-2) != HAL_OK) {
-                    // 如果都不是，可以选择输出或忽略
-                    // 对于调试，可以取消下面的注释
-                    /*
-                    char debug_msg[260];  // 调整缓冲区大小以适应可能的完整消息
-                    sprintf(debug_msg, "Unknown command: %s", uart5_rx_buffer);
-                    HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
-                    */
+            // 尝试解析为批量舵机控制消息
+            if(ParseBatchServoControlMessage(uart5_rx_buffer, uart5_rx_index-2) != HAL_OK) { // -2 to exclude \r\n
+                // 如果不是批量舵机控制消息，尝试解析为普通舵机控制消息
+                if(ParseServoControlMessage(uart5_rx_buffer, uart5_rx_index-2) != HAL_OK) { // -2 to exclude \r\n
+                    // 如果不是舵机控制消息，尝试解析为电机控制消息
+                    if(ParseMotorControlMessage(uart5_rx_buffer, uart5_rx_index-2) != HAL_OK) {
+                        // 如果都不是，可以选择输出或忽略
+                        // 对于调试，可以取消下面的注释
+                        /*
+                        char debug_msg[260];  // 调整缓冲区大小以适应可能的完整消息
+                        sprintf(debug_msg, "Unknown command: %s", uart5_rx_buffer);
+                        HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
+                        */
+                    }
                 }
             }
 
@@ -736,17 +846,20 @@ HAL_StatusTypeDef Jetson_ProcessReceivedData(uint8_t *data, uint8_t length)
             uart5_rx_buffer[uart5_rx_index] = '\0';
             uart5_frame_complete = 1;
 
-            // 尝试解析为舵机控制消息
-            if(ParseServoControlMessage(uart5_rx_buffer, uart5_rx_index-1) != HAL_OK) { // -1 to exclude \n
-                // 如果不是舵机控制消息，尝试解析为电机控制消息
-                if(ParseMotorControlMessage(uart5_rx_buffer, uart5_rx_index-1) != HAL_OK) {
-                    // 如果都不是，可以选择输出或忽略
-                    // 对于调试，可以取消下面的注释
-                    /*
-                    char debug_msg[260];
-                    sprintf(debug_msg, "Unknown command: %s", uart5_rx_buffer);
-                    HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
-                    */
+            // 尝试解析为批量舵机控制消息
+            if(ParseBatchServoControlMessage(uart5_rx_buffer, uart5_rx_index-1) != HAL_OK) { // -1 to exclude \n
+                // 如果不是批量舵机控制消息，尝试解析为普通舵机控制消息
+                if(ParseServoControlMessage(uart5_rx_buffer, uart5_rx_index-1) != HAL_OK) { // -1 to exclude \n
+                    // 如果不是舵机控制消息，尝试解析为电机控制消息
+                    if(ParseMotorControlMessage(uart5_rx_buffer, uart5_rx_index-1) != HAL_OK) {
+                        // 如果都不是，可以选择输出或忽略
+                        // 对于调试，可以取消下面的注释
+                        /*
+                        char debug_msg[260];
+                        sprintf(debug_msg, "Unknown command: %s", uart5_rx_buffer);
+                        HAL_UART_Transmit(&huart4, (uint8_t*)debug_msg, strlen(debug_msg), 0xFFFF);
+                        */
+                    }
                 }
             }
 
