@@ -27,26 +27,22 @@ Project File Date:  01/17/2026
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'C:\keil5\ARM\ARMCC\Bin'
 Build target 'GPIO_Test_F4'
-compiling jetson_uart.c...
-../Core/Inc/jetson_uart.h(172): warning:  #1-D: last line of file ends without a newline
-  #endif /* __JETSON_UART_H */
+compiling main.c...
 ../Core/Inc/pca9685.h(26): warning:  #1-D: last line of file ends without a newline
   #endif
-..\Core\Src\jetson_uart.c(103): warning:  #550-D: variable "uart5_frame_complete"  was set but never used
-  static uint8_t uart5_frame_complete = 0; /*!< 帧完成标�? */
-..\Core\Src\jetson_uart.c(104): warning:  #177-D: variable "uart5_rx_data"  was declared but never referenced
-  static uint8_t uart5_rx_data;           /*!< UART5接收数据 */
-..\Core\Src\jetson_uart.c(106): warning:  #177-D: variable "received_msg"  was declared but never referenced
-  static JetsonMessage_t received_msg;     /*!< 用于接收消息的临时缓冲区 */
-..\Core\Src\jetson_uart.c(111): warning:  #550-D: variable "current_pose"  was set but never used
-  static MultiServoPose_t current_pose = {0};     /*!< 当前舵机姿�? */
-..\Core\Src\jetson_uart.c(112): warning:  #550-D: variable "last_pose_update"  was set but never used
-  static uint32_t last_pose_update = 0;           /*!< 上次姿态更新时�? */
-..\Core\Src\jetson_uart.c: 7 warnings, 0 errors
+../Core/Inc/jetson_uart.h(169): warning:  #1-D: last line of file ends without a newline
+  #endif /* __JETSON_UART_H */
+../Core/Src/main.c(1165): warning:  #177-D: variable "uart_send_buf"  was declared but never referenced
+    char uart_send_buf[50];
+../Core/Src/main.c(1380): warning:  #177-D: variable "tim_handles"  was declared but never referenced
+    TIM_HandleTypeDef* tim_handles[] = { &htim5, &htim1, &htim2, &htim3, &htim8 }; // Index 0 is placeholder or special mapping? 
+../Core/Src/main.c(1502): warning:  #177-D: variable "errorMsg"  was declared but never referenced
+                          char errorMsg[] = "UART1 transmit error\r\n";
+../Core/Src/main.c: 5 warnings, 0 errors
 linking...
-Program Size: Code=38484 RO-data=1920 RW-data=328 ZI-data=40464  
+Program Size: Code=37748 RO-data=1988 RW-data=324 ZI-data=41556  
 FromELF: creating hex file...
-"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 7 Warning(s).
+"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 5 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -68,7 +64,7 @@ Package Vendor: Keil
 <h2>Collection of Component Files used:</h2>
 
    * Component: ARM::CMSIS:CORE@6.1.1
-Build Time Elapsed:  00:00:04
+Build Time Elapsed:  00:00:02
 </pre>
 </body>
 </html>

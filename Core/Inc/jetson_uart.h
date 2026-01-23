@@ -155,9 +155,6 @@ typedef struct {
     uint8_t executing;             // 是否正在执行
 } BatchServoControl_t;
 
-// 解析批量舵机控制消息
-HAL_StatusTypeDef ParseBatchServoControlMessage(uint8_t *buffer, uint8_t length);
-
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

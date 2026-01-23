@@ -1033,7 +1033,7 @@ static void MX_UART5_Init(void)
 
   /* USER CODE END UART5_Init 1 */
   huart5.Instance = UART5;
-  huart5.Init.BaudRate = 115200;
+  huart5.Init.BaudRate = 460800;
   huart5.Init.WordLength = UART_WORDLENGTH_8B;
   huart5.Init.StopBits = UART_STOPBITS_1;
   huart5.Init.Parity = UART_PARITY_NONE;
@@ -1338,16 +1338,9 @@ void Jetson_Task(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    // 100Hz通信速率，即每10ms执行一次循环
-    // 数据接收由中断处理，这里可以做其他事情
-
-    // 更新所有电机数据到综合姿态信息
-    extern void UpdateMotorData(int8_t dir1, int8_t dir2, int8_t dir3, int8_t dir4,
-                               float rpm1, float rpm2, float rpm3, float rpm4);
-    UpdateMotorData(all_motors[0].direction, all_motors[1].direction,
-                   all_motors[2].direction, all_motors[3].direction,
-                   all_motors[0].speed_rpm, all_motors[1].speed_rpm,
-                   all_motors[2].speed_rpm, all_motors[3].speed_rpm);
+    // 处理从环形缓冲区接收到的指令
+    extern void Jetson_HandleCommands(void);
+    Jetson_HandleCommands();
 
     osDelay(10);
 
@@ -1382,71 +1375,89 @@ void Jetson_Task(void *argument)
 void MotorSpeedTask(void *argument)
 {
   /* USER CODE BEGIN MotorSpeedTask */
-  /* Infinite loop */
+  
+  // 定义TIM句柄数组
+  TIM_HandleTypeDef* tim_handles[] = { &htim5, &htim1, &htim2, &htim3, &htim8 }; // Index 0 is placeholder or special mapping? 
+  // Checking logic: 
+  // Motor 1 (Physical) -> Internal id 0 -> Encoder TIM1
+  // Motor 2 (Physical) -> Internal id 1 -> Encoder TIM2
+  // Motor 3 (Physical) -> Internal id 2 -> Encoder TIM3
+  // Motor 4 (Physical) -> Internal id 3 -> Encoder TIM8
+  // The original code accessed tim_handles[Motor_id].
+  // But wait, the original array was: { NULL,&htim1, &htim2,&htim3,&htim8}
+  // Let's keep strict alignment with original logic.
+  
+  TIM_HandleTypeDef* encoder_tims[] = { NULL, &htim1, &htim2, &htim3, &htim8 };
 
-			 // 定义TIM句柄数组
-	  	TIM_HandleTypeDef* tim_handles[] = { NULL,&htim1, &htim2,&htim3,&htim8};//NULL只是用来占位的
-		// 定义结构体实例,互斥访问时需要放到函数里
-			Motor_Status_t motor_n20 = { ((Motor_Status_t*)argument)->dev,0,0,0,0 };
-			uint8_t Motor_id=motor_n20.dev;//(1~4)
-			TIM_HandleTypeDef* tim_handles_self=tim_handles[Motor_id];
+  // 这里的 argument 是传入的 Motor_Status_t 指针
+  Motor_Status_t* p_motor_status = (Motor_Status_t*)argument;
+  uint8_t dev_id = p_motor_status->dev; // 1, 2, 3, 4
+  
+  // 获取对应的编码器定时器句柄
+  TIM_HandleTypeDef* tim_self = encoder_tims[dev_id];
+  
+  // 静态变量用于低通滤波 (Low Pass Filter)
+  // LPF 系数 alpha: 0.0-1.0。越小越平滑但延迟越高，越大响应越快但噪声越大。
+  // 推荐 0.3 ~ 0.5 用于电机速度
+  const float LPF_ALPHA = 0.4f; 
+  static float rpm_history[5] = {0}; // 对应 dev_id 1-4
+  
+  // 初始化：记录第一次的计数器值
+  p_motor_status->last_counter = __HAL_TIM_GET_COUNTER(tim_self);
+  
+  // 精确时基控制
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  const TickType_t xFrequency = pdMS_TO_TICKS(SPEED_SAMPLE_TIME_MS); // 20ms
 
-    // 初始化上一次计数器值为当前值，防止第一次计算出错
-    motor_n20.last_counter = __HAL_TIM_GET_COUNTER(tim_handles_self);
+  while (1)
+  {
+      // 1. 等待直到下一个精确的周期时刻
+      vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
-    // 获取当前 Tick 时间，用于精确延时(即作为vTaskDelayUntil的延时起点,记录的是上一个周期理论唤醒时间,这个值会被vTaskDelayUntil更新),这个时间是从SystemTick里面读的
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    TickType_t xFrequency = pdMS_TO_TICKS(SPEED_SAMPLE_TIME_MS);  //将周期的单位转换为tick
+      // 2. 读取当前编码器计数值
+      uint16_t current_cnt = __HAL_TIM_GET_COUNTER(tim_self);
+      
+      // 3. 计算增量 (注意处理 uint16_t 溢出)
+      // 强转为 int16_t 利用补码特性自动处理溢出
+      // 例如：当前 10, 上次 65530 -> (int16_t)(10 - 65530) = (int16_t)(16) = 16 (正转)
+      int16_t delta = (int16_t)(current_cnt - p_motor_status->last_counter);
+      
+      // 更新历史计数器
+      p_motor_status->last_counter = current_cnt;
+      p_motor_status->encode_delta = delta;
+      p_motor_status->total_count += delta;
 
-    while (1)
-    {
- 
-            // ================= A. 数据采集 =================
-            // 根据Motor_id选择对应的TIM
-            uint16_t current_cnt = __HAL_TIM_GET_COUNTER(tim_handles[Motor_id]);
-        
-            // ================= B. 核心解算 =================
-            
-            // 1. 计算增量 (Delta)
-            int16_t delta = (int16_t)(current_cnt - motor_n20.last_counter);
-            
-            // 更新状态结构体
-            motor_n20.encode_delta = delta;
-            motor_n20.last_counter = current_cnt;
-            motor_n20.total_count += delta; // 如果需要记录跑了多远
-            
-            // 2. 计算 RPM (转速)
-            float rpm = ((float)delta) * (60000.0f / SPEED_SAMPLE_TIME_MS) / PULSES_PER_REV_OUTPUT;
-            motor_n20.speed_rpm = rpm;
-            
-            // 3. 判断方向
-            if (delta > 0) {
-                motor_n20.direction = 1;
-            }
-            else if (delta < 0) {
-                motor_n20.direction = -1;
-            }
-            else {
-                motor_n20.direction = 0;
-            }
-            
-            /* 将结构体写入队列 */
-            osMessageQueuePut(MotorQueueHandle, &motor_n20, NULL, osWaitForever);
-            
-            // 更新电机数据到综合姿态信息
-            extern void UpdateSingleMotorData(uint8_t motor_id, int8_t direction, float speed_rpm);
-            // 根据当前任务的设备ID来确定更新哪个电机的数据
-            UpdateSingleMotorData(motor_n20.dev - 1, motor_n20.direction, motor_n20.speed_rpm);
-            
-            // 同时更新全局电机状态数组
-            all_motors[motor_n20.dev - 1] = motor_n20;
-            
-            // ================= C. 任务调度 =================
-            // 使用 vTaskDelayUntil 保证采样的绝对周期性
-            vTaskDelayUntil(&xLastWakeTime, xFrequency);
-        }
-        
+      // 4. 计算原始物理转速 (RPM)
+      // 公式: RPM = (Delta / PulsesPerRev) * (60000ms / SampleTime)
+      // 使用 float 进行高精度计算
+      float raw_rpm = ((float)delta) * (60000.0f / (float)SPEED_SAMPLE_TIME_MS) / PULSES_PER_REV_OUTPUT;
 
+      // 5. 低通滤波 (Low Pass Filter)
+      // New = Alpha * Raw + (1 - Alpha) * Old
+      float filtered_rpm = LPF_ALPHA * raw_rpm + (1.0f - LPF_ALPHA) * rpm_history[dev_id];
+      
+      // 保存滤波后的值供下次使用
+      rpm_history[dev_id] = filtered_rpm;
+      
+      // 6. 更新结构体状态
+      p_motor_status->speed_rpm = filtered_rpm;
+
+      // 7. 判断方向
+      if (filtered_rpm > 0.1f) p_motor_status->direction = 1;
+      else if (filtered_rpm < -0.1f) p_motor_status->direction = -1;
+      else p_motor_status->direction = 0;
+
+      /* 将结构体写入队列 (可选，如果队列满了不等待，防止阻塞控制循环) */
+      osMessageQueuePut(MotorQueueHandle, p_motor_status, 0, 0);
+
+      // 8. 更新全局数据 (供 Jetson_Task 打包发送)
+      // 注意：all_motors 数组索引是 0-3，而 dev_id 是 1-4
+      // 还需要更新到 ComprehensivePose 中
+      extern void UpdateSingleMotorData(uint8_t motor_id, int8_t direction, float speed_rpm);
+      UpdateSingleMotorData(dev_id - 1, p_motor_status->direction, filtered_rpm);
+      
+      all_motors[dev_id - 1] = *p_motor_status;
+  }
   /* USER CODE END MotorSpeedTask */
 }
 

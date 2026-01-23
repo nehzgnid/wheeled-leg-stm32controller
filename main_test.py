@@ -46,8 +46,8 @@ def map_raw_to_q(raw_angles, THETA_MID, S):
 
 
 def main():
-    # 创建控制器实例
-    ctrl = ServoController(port='/dev/ttyTHS1')
+    # 创建控制器实例 (注意: 下位机波特率已升级为 460800)
+    ctrl = ServoController(port='/dev/ttyTHS1', baudrate=460800)
     
     # 尝试初始化 LED，如果失败则忽略（防止没有该硬件时报错）
     try:
