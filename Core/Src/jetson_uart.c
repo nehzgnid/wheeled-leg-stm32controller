@@ -230,7 +230,7 @@ static HAL_StatusTypeDef ParseMotorControlMessage(uint8_t *buffer, uint16_t leng
 
 HAL_StatusTypeDef SendCurrentPose(void)
 {
-    char pose_msg[512];
+    static char pose_msg[512];
     memset(pose_msg, 0, sizeof(pose_msg));
 
     // 使用定点数发送，避免 sprintf 浮点崩溃问题

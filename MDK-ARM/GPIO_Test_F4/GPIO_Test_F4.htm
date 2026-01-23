@@ -3,11 +3,11 @@
 <title>Static Call Graph - [GPIO_Test_F4\GPIO_Test_F4.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image GPIO_Test_F4\GPIO_Test_F4.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Fri Jan 23 22:20:05 2026
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Fri Jan 23 22:43:02 2026
 <BR><P>
-<H3>Maximum Stack Usage =        880 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
+<H3>Maximum Stack Usage =        612 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
-Jetson_Task &rArr; SendCurrentPose &rArr; __2sprintf &rArr; _printf_char_common &rArr; __printf
+Jetson_Task &rArr; Jetson_HandleCommands &rArr; ParseBatchServoControlMessage &rArr; __hardfp_atof &rArr; __strtod_int &rArr; _local_sscanf &rArr; _scanf_real &rArr; _scanf_really_real &rArr; _fp_value &rArr; _btod_etento &rArr; _btod_emul &rArr; _e2e
 <P>
 <H3>
 Functions with no stack information
@@ -1673,8 +1673,8 @@ Global Symbols
 </UL>
 
 <P><STRONG><a name="[6c]"></a>Jetson_Task</STRONG> (Thumb, 134 bytes, Stack size 104 bytes, main.o(i.Jetson_Task))
-<BR><BR>[Stack]<UL><LI>Max Depth = 880 + Unknown Stack Size
-<LI>Call Chain = Jetson_Task &rArr; SendCurrentPose &rArr; __2sprintf &rArr; _printf_char_common &rArr; __printf
+<BR><BR>[Stack]<UL><LI>Max Depth = 612 + Unknown Stack Size
+<LI>Call Chain = Jetson_Task &rArr; Jetson_HandleCommands &rArr; ParseBatchServoControlMessage &rArr; __hardfp_atof &rArr; __strtod_int &rArr; _local_sscanf &rArr; _scanf_real &rArr; _scanf_really_real &rArr; _fp_value &rArr; _btod_etento &rArr; _btod_emul &rArr; _e2e
 </UL>
 <BR>[Calls]<UL><LI><a href="#[cf]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;osDelay
 <LI><a href="#[d1]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
@@ -1791,8 +1791,8 @@ Global Symbols
 </UL>
 <BR>[Address Reference Count : 1]<UL><LI> main.o(i.main)
 </UL>
-<P><STRONG><a name="[122]"></a>SendCurrentPose</STRONG> (Thumb, 524 bytes, Stack size 648 bytes, jetson_uart.o(i.SendCurrentPose))
-<BR><BR>[Stack]<UL><LI>Max Depth = 776 + Unknown Stack Size
+<P><STRONG><a name="[122]"></a>SendCurrentPose</STRONG> (Thumb, 524 bytes, Stack size 136 bytes, jetson_uart.o(i.SendCurrentPose))
+<BR><BR>[Stack]<UL><LI>Max Depth = 264 + Unknown Stack Size
 <LI>Call Chain = SendCurrentPose &rArr; __2sprintf &rArr; _printf_char_common &rArr; __printf
 </UL>
 <BR>[Calls]<UL><LI><a href="#[d1]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
@@ -3214,8 +3214,8 @@ Local Symbols
 <P><STRONG><a name="[10e]"></a>UART_SetConfig</STRONG> (Thumb, 258 bytes, Stack size 16 bytes, stm32f4xx_hal_uart.o(i.UART_SetConfig))
 <BR><BR>[Stack]<UL><LI>Max Depth = 64<LI>Call Chain = UART_SetConfig &rArr; __aeabi_uldivmod
 </UL>
-<BR>[Calls]<UL><LI><a href="#[ea]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_uldivmod
-<LI><a href="#[d4]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_RCC_GetPCLK1Freq
+<BR>[Calls]<UL><LI><a href="#[d4]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_RCC_GetPCLK1Freq
+<LI><a href="#[ea]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_uldivmod
 <LI><a href="#[148]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_RCC_GetPCLK2Freq
 </UL>
 <BR>[Called By]<UL><LI><a href="#[10c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_UART_Init
