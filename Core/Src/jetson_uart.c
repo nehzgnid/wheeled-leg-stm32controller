@@ -231,6 +231,8 @@ static HAL_StatusTypeDef ParseMotorControlMessage(uint8_t *buffer, uint16_t leng
 HAL_StatusTypeDef SendCurrentPose(void)
 {
     char pose_msg[512];
+    memset(pose_msg, 0, sizeof(pose_msg)); // 安全初始化
+
     int len = sprintf(pose_msg, "POSE,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%lu,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%d,%d,%d,%d,%.1f,%.1f,%.1f,%.1f\n",
             servo_current_angles[0], servo_current_angles[1],
             servo_current_angles[2], servo_current_angles[3],
@@ -249,7 +251,13 @@ HAL_StatusTypeDef SendCurrentPose(void)
             comprehensive_pose.motor_data.speed_rpm[0], comprehensive_pose.motor_data.speed_rpm[1],
             comprehensive_pose.motor_data.speed_rpm[2], comprehensive_pose.motor_data.speed_rpm[3]);
 
-    return HAL_UART_Transmit(&huart5, (uint8_t*)pose_msg, len, 100);
+    // 安全检查：防止溢出或格式化错误
+    if(len < 0 || len >= 512) {
+        return HAL_ERROR;
+    }
+
+    // 增加超时时间到 500ms，确保高负载下也能发送完成
+    return HAL_UART_Transmit(&huart5, (uint8_t*)pose_msg, len, 500);
 }
 
 void Servo_UpdateAll(void)

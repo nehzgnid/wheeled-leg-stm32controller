@@ -27,22 +27,7 @@ Project File Date:  01/17/2026
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'C:\keil5\ARM\ARMCC\Bin'
 Build target 'GPIO_Test_F4'
-compiling main.c...
-../Core/Inc/pca9685.h(26): warning:  #1-D: last line of file ends without a newline
-  #endif
-../Core/Inc/jetson_uart.h(169): warning:  #1-D: last line of file ends without a newline
-  #endif /* __JETSON_UART_H */
-../Core/Src/main.c(1165): warning:  #177-D: variable "uart_send_buf"  was declared but never referenced
-    char uart_send_buf[50];
-../Core/Src/main.c(1380): warning:  #177-D: variable "tim_handles"  was declared but never referenced
-    TIM_HandleTypeDef* tim_handles[] = { &htim5, &htim1, &htim2, &htim3, &htim8 }; // Index 0 is placeholder or special mapping? 
-../Core/Src/main.c(1502): warning:  #177-D: variable "errorMsg"  was declared but never referenced
-                          char errorMsg[] = "UART1 transmit error\r\n";
-../Core/Src/main.c: 5 warnings, 0 errors
-linking...
-Program Size: Code=37748 RO-data=1988 RW-data=324 ZI-data=41556  
-FromELF: creating hex file...
-"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 5 Warning(s).
+"GPIO_Test_F4\GPIO_Test_F4.axf" - 0 Error(s), 0 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -64,7 +49,7 @@ Package Vendor: Keil
 <h2>Collection of Component Files used:</h2>
 
    * Component: ARM::CMSIS:CORE@6.1.1
-Build Time Elapsed:  00:00:02
+Build Time Elapsed:  00:00:01
 </pre>
 </body>
 </html>
