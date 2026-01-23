@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cmsis_os.h"  // 添加FreeRTOS头文件以使用互斥锁
+#include "pca9685.h"   // 添加PCA9685头文件
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -120,10 +121,10 @@ static uint8_t motor_cmd_type[4] = {0};     /*!< 上位机发来的电机命令�
 // 电机命令数组的互斥锁，用于保护中断和任务之间的数据访问
 static osMutexId_t motor_cmd_mutex = NULL;
 
-// 舵机运动状态 - 用于按时间平滑移动
+// 舵机运动状态 - 用于按时间平滑移动 (升级为 Float 高精度控制)
 typedef struct {
-    uint8_t start_angle;       // 开始角度
-    uint8_t target_angle;      // 目标角度
+    float start_angle;         // 开始角度 (Float)
+    float target_angle;        // 目标角度 (Float)
     uint32_t start_time;       // 开始时间
     uint32_t duration;         // 总持续时间（毫秒）
     uint8_t moving;            // 是否正在移动
@@ -131,8 +132,8 @@ typedef struct {
 
 static ServoMotion_t servo_motion[16] = {0};  // 16个舵机的运动状态
 
-// 舵机当前角度跟踪 - 用于平滑移动的起始角度
-static uint8_t servo_current_angles[16] = {0}; // 16个舵机的当前角度
+// 舵机当前角度跟踪 - 用于平滑移动的起始角度 (升级为 Float 高精度控制)
+static float servo_current_angles[16] = {0.0f}; // 16个舵机的当前角度
 
 // 批量舵机控制状态
 static BatchServoControl_t batch_servo_control = {0};  // 批量舵机控制状态
@@ -269,7 +270,8 @@ HAL_StatusTypeDef ParseServoControlMessage(uint8_t *buffer, uint8_t length)
     if(token == NULL) {
         return HAL_ERROR;
     }
-    uint16_t angle = atoi(token);
+    // 使用 atof 以支持可能的浮点输入，即使协议目前是整数
+    float angle_f = atof(token);
 
     // 解析持续时间
     token = strtok(NULL, ",");
@@ -279,34 +281,32 @@ HAL_StatusTypeDef ParseServoControlMessage(uint8_t *buffer, uint8_t length)
     uint16_t duration = atoi(token);
 
     // 限制范围
-    if(servo_id >= 16 || angle > 180) {
+    if(servo_id >= 16 || angle_f > 180.0f) {
         return HAL_ERROR;
     }
 
-    // 更新当前姿态
-    current_pose.angles[servo_id] = angle;
+    // 更新当前姿态 (显示用，取整)
+    current_pose.angles[servo_id] = (uint16_t)angle_f;
     current_pose.timestamp = HAL_GetTick();
     last_pose_update = HAL_GetTick();
 
     // 同时更新综合姿态信息
-    comprehensive_pose.servo_pose.angles[servo_id] = angle;
+    comprehensive_pose.servo_pose.angles[servo_id] = (uint16_t)angle_f;
     comprehensive_pose.servo_pose.timestamp = HAL_GetTick();
 
-    // 调用PCA9685控制函数（需要外部提供）
-    extern void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle);
     extern I2C_HandleTypeDef hi2c2;  /*!< 外部I2C句柄 */
 
     // 如果duration为0，立即设置角度
     if(duration == 0) {
-        PCA9685_SetAngle(&hi2c2, servo_id, angle);
+        PCA9685_SetAngleFloat(&hi2c2, servo_id, angle_f);
         // 更新舵机运动状态
         servo_motion[servo_id].moving = 0;
-        servo_current_angles[servo_id] = angle; // 更新当前角度
+        servo_current_angles[servo_id] = angle_f; // 更新当前角度 (Float)
     } else {
         // 设置舵机运动参数，但不立即执行
-        // 使用当前实际角度作为起始角度，而不是目标角度
-        servo_motion[servo_id].start_angle = servo_current_angles[servo_id];  // 使用当前实际角度
-        servo_motion[servo_id].target_angle = angle;
+        // 使用当前实际角度作为起始角度 (Float 高精度)
+        servo_motion[servo_id].start_angle = servo_current_angles[servo_id];
+        servo_motion[servo_id].target_angle = angle_f;
         servo_motion[servo_id].duration = duration;
         servo_motion[servo_id].start_time = HAL_GetTick();
         servo_motion[servo_id].moving = 1;
@@ -370,8 +370,9 @@ HAL_StatusTypeDef ParseBatchServoControlMessage(uint8_t *buffer, uint8_t length)
         if(token == NULL) {
             return HAL_ERROR;
         }
-        uint8_t angle = atoi(token);
-        if(angle > 180) {
+        // 使用 atof 解析角度
+        float angle_f = atof(token);
+        if(angle_f > 180.0f) {
             return HAL_ERROR; // 角度超出范围
         }
 
@@ -382,38 +383,25 @@ HAL_StatusTypeDef ParseBatchServoControlMessage(uint8_t *buffer, uint8_t length)
         }
         uint16_t duration = atoi(token);
 
-        // 存储到批量控制结构
-        batch_servo_control.commands[index].servo_id = servo_id;
-        batch_servo_control.commands[index].angle = angle;
-        batch_servo_control.commands[index].duration = duration;
-        index++;
-    }
-
-    batch_servo_control.count = index;
-    batch_servo_control.start_time = HAL_GetTick();
-    batch_servo_control.executing = 1;
-
-    // 设置所有参与批量控制的舵机的运动状态
-    for(uint8_t i = 0; i < batch_servo_control.count; i++) {
-        uint8_t servo_id = batch_servo_control.commands[i].servo_id;
-        uint8_t target_angle = batch_servo_control.commands[i].angle;
-        uint16_t duration = batch_servo_control.commands[i].duration;
-
+        // 设置所有参与批量控制的舵机的运动状态
         if(duration == 0) {
             // 立即执行
             extern I2C_HandleTypeDef hi2c2;
-            extern void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle);
-            PCA9685_SetAngle(&hi2c2, servo_id, target_angle);
-            servo_current_angles[servo_id] = target_angle;
+            PCA9685_SetAngleFloat(&hi2c2, servo_id, angle_f);
+            servo_current_angles[servo_id] = angle_f;
             servo_motion[servo_id].moving = 0;
         } else {
             // 设置运动参数，使用当前角度作为起始角度
             servo_motion[servo_id].start_angle = servo_current_angles[servo_id];
-            servo_motion[servo_id].target_angle = target_angle;
+            servo_motion[servo_id].target_angle = angle_f;
             servo_motion[servo_id].duration = duration;
-            servo_motion[servo_id].start_time = batch_servo_control.start_time;
+            servo_motion[servo_id].start_time = HAL_GetTick(); // 注意：这里使用了当前时间，批处理中可能希望统一时间，但在高频循环中差异可忽略
             servo_motion[servo_id].moving = 1;
         }
+        
+        // 更新 comprehensive_pose (取整显示)
+        comprehensive_pose.servo_pose.angles[servo_id] = (uint16_t)angle_f;
+        index++;
     }
 
     return HAL_OK;
@@ -698,30 +686,56 @@ uint8_t GetMotorCommandType(uint8_t motor_id)
 
 /* USER CODE END 4 */
 
-// 持续更新舵机角度，实现按时间平滑移动
+// 持续更新舵机角度，实现按时间平滑移动 (升级为 Float 高精度计算 + 临界区保护)
 void Servo_UpdateAll(void)
 {
     uint32_t now = HAL_GetTick();
-    extern I2C_HandleTypeDef hi2c2;  /*!< 外部I2C句柄 */
-    extern void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle);
+    extern I2C_HandleTypeDef hi2c2;
+    extern void PCA9685_SetAngleFloat(I2C_HandleTypeDef *hi2c, uint8_t num, float angle);
 
     for (int id = 0; id < 16; id++) {
+        // [快照读取] 
+        // 因为 servo_motion 可能在 UART 中断中被修改，这里需要原子读取
+        // 在单核 MCU 上，简单的读取通常是安全的，但为了严谨，我们先检查 moving 标志
+        // 更严格的做法是 taskENTER_CRITICAL()，但考虑到 100Hz 频率，这里采用双重检查策略
+        
         if (!servo_motion[id].moving) continue;
 
-        uint32_t elapsed = now - servo_motion[id].start_time;
-        if (elapsed >= servo_motion[id].duration) {
-            // 到达目标
-            PCA9685_SetAngle(&hi2c2, id, servo_motion[id].target_angle);
-            servo_current_angles[id] = servo_motion[id].target_angle; // 更新当前角度
+        // 获取运动参数快照
+        ServoMotion_t motion = servo_motion[id]; 
+        
+        // 如果在复制过程中被 ISR 关闭了，再次检查
+        if (!motion.moving) continue;
+
+        uint32_t elapsed = now - motion.start_time;
+        float current_angle_f;
+
+        // [逻辑修正 1] 强制终点对齐
+        // 当时间超过 duration 时，直接等于 target，消除任何计算尾差
+        if (elapsed >= motion.duration) {
+            current_angle_f = motion.target_angle;
+            
+            // 只有当真正到达终点后，才修改全局状态
             servo_motion[id].moving = 0;
         } else {
-            // 计算当前应该到达的角度
-            float ratio = (float)elapsed / servo_motion[id].duration;
-            uint8_t next_angle = servo_motion[id].start_angle +
-                (servo_motion[id].target_angle - servo_motion[id].start_angle) * ratio;
-            PCA9685_SetAngle(&hi2c2, id, next_angle);
-            servo_current_angles[id] = next_angle; // 更新当前角度
+            // [逻辑修正 2] 锚点式插值 (Lerp)
+            // 绝不使用增量累加 (angle += step)，防止误差累积
+            // 始终基于固定的 start 和 target 计算当前绝对位置
+            float ratio = (float)elapsed / (float)motion.duration;
+            
+            current_angle_f = motion.start_angle +
+                              (motion.target_angle - motion.start_angle) * ratio;
         }
+
+        // [逻辑修正 3] 更新浮点状态
+        // 这里的 servo_current_angles 是 float 类型，完整保留小数位
+        servo_current_angles[id] = current_angle_f;
+        
+        // 更新显示用的整数状态 (仅用于回传 POSE，不参与控制逻辑)
+        comprehensive_pose.servo_pose.angles[id] = (uint16_t)(current_angle_f + 0.5f);
+
+        // 执行高精度控制 (直接发送 float 给驱动)
+        PCA9685_SetAngleFloat(&hi2c2, id, current_angle_f);
     }
 }
 

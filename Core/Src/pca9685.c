@@ -108,7 +108,7 @@ void PCA9685_SetDuty(I2C_HandleTypeDef *hi2c, uint8_t num, float duty)
 }
 
 /**
- * @brief  Set PCA9685 angle for servo control
+ * @brief  Set PCA9685 angle for servo control (Legacy Integer Version)
  * @param  hi2c: I2C handle
  * @param  num: PWM channel (0-15)
  * @param  angle: Angle (0-180 degrees)
@@ -116,14 +116,31 @@ void PCA9685_SetDuty(I2C_HandleTypeDef *hi2c, uint8_t num, float duty)
  */
 void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle)
 {
+    // Redirect to high precision float version
+    PCA9685_SetAngleFloat(hi2c, num, (float)angle);
+}
+
+/**
+ * @brief  Set PCA9685 angle for servo control (High Precision Float Version)
+ * @param  hi2c: I2C handle
+ * @param  num: PWM channel (0-15)
+ * @param  angle: Angle (0.0-180.0 degrees)
+ * @retval None
+ */
+void PCA9685_SetAngleFloat(I2C_HandleTypeDef *hi2c, uint8_t num, float angle)
+{
     uint32_t off_time;
     
     // Limit angle to 0-180
-    if(angle > 180) angle = 180;
+    if(angle > 180.0f) angle = 180.0f;
+    if(angle < 0.0f) angle = 0.0f;
     
-    // Calculate off time for servo angle (pulse width 0.5ms to 2.5ms for 50Hz)
-    // 0.5ms = 110, 2.5ms = 525 (for 50Hz frequency)
-    off_time = (uint32_t)(110 + angle * 2.27f);  // 2.27 = (525-110)/180
+    // Calculate off time for servo angle (High Precision)
+    // 0.5ms (0 deg) = 102.4 counts (4096 * 0.5/20)
+    // 2.5ms (180 deg) = 512.0 counts (4096 * 2.5/20)
+    // Slope = (512.0 - 102.4) / 180.0 = 2.27555
+    
+    off_time = (uint32_t)(102.4f + angle * 2.27555f);
     
     PCA9685_SetPWM(hi2c, num, 0, off_time);
 }
@@ -140,18 +157,12 @@ void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle)
 void PCA9685_ServoControl(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t start_angle, uint8_t end_angle, uint8_t speed)
 {
     // For faster response, just set the final position
-    uint32_t off_time = (uint32_t)(110 + end_angle * 2.27f);
-    PCA9685_SetPWM(hi2c, num, 0, off_time);
+    PCA9685_SetAngleFloat(hi2c, num, (float)end_angle);
 }
 
 /**
  * @brief  Control servo motor with PCA9685 with smooth movement
- * @param  hi2c: I2C handle
- * @param  num: Servo channel (0-15)
- * @param  start_angle: Start angle (0-180 degrees)
- * @param  end_angle: End angle (0-180 degrees)
- * @param  speed: Speed control (1-9, higher value means slower)
- * @retval None
+ * @deprecated This function uses blocking delays. Use Servo_UpdateAll in main loop instead.
  */
 void PCA9685_ServoControlSmooth(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t start_angle, uint8_t end_angle, uint8_t speed)
 {
@@ -160,55 +171,38 @@ void PCA9685_ServoControlSmooth(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t st
     if(speed > 9) speed = 9;
 
     // 计算步长，速度值越高，步长越小（移动越慢）
-    uint8_t step_size = (10 - speed); // 速度9对应步长1，速度1对应步长9
-    if(step_size == 0) step_size = 1; // 确保至少移动1度
+    float step_size = (float)(10 - speed) * 0.5f; // Reduce step size for smoother motion
+    if(step_size < 0.1f) step_size = 0.1f; 
 
-    uint32_t off_time;
+    float current = (float)start_angle;
+    float target = (float)end_angle;
 
-    if(end_angle > start_angle)
+    if(target > current)
     {
-        // 从起始角度到结束角度，按步长递增
-        for(uint8_t i = start_angle; i <= end_angle; i += step_size)
+        for(float i = current; i <= target; i += step_size)
         {
-            // 计算舵机角度对应的PWM值
-            off_time = (uint32_t)(110 + i * 2.27f);
-            PCA9685_SetPWM(hi2c, num, 0, off_time);
-
-            // 添加小延时以实现平滑移动
+            PCA9685_SetAngleFloat(hi2c, num, i);
             HAL_Delay(10);
-
-            // 如果下一次迭代会超过目标角度，则直接设置到目标角度
-            if(i + step_size > end_angle) {
-                off_time = (uint32_t)(110 + end_angle * 2.27f);
-                PCA9685_SetPWM(hi2c, num, 0, off_time);
+            if(i + step_size > target) {
+                PCA9685_SetAngleFloat(hi2c, num, target);
                 break;
             }
         }
     }
-    else if(end_angle < start_angle)
+    else if(target < current)
     {
-        // 从起始角度到结束角度，按步长递减
-        for(uint8_t i = start_angle; i >= end_angle; i -= step_size)
+        for(float i = current; i >= target; i -= step_size)
         {
-            // 计算舵机角度对应的PWM值
-            off_time = (uint32_t)(110 + i * 2.27f);
-            PCA9685_SetPWM(hi2c, num, 0, off_time);
-
-            // 添加小延时以实现平滑移动
+            PCA9685_SetAngleFloat(hi2c, num, i);
             HAL_Delay(10);
-
-            // 如果下一次迭代会低于目标角度，则直接设置到目标角度
-            if(i < step_size || (i - step_size) < end_angle) {
-                off_time = (uint32_t)(110 + end_angle * 2.27f);
-                PCA9685_SetPWM(hi2c, num, 0, off_time);
+            if(i - step_size < target) {
+                PCA9685_SetAngleFloat(hi2c, num, target);
                 break;
             }
         }
     }
     else
     {
-        // 如果起始角度和结束角度相同，直接设置到该角度
-        off_time = (uint32_t)(110 + start_angle * 2.27f);
-        PCA9685_SetPWM(hi2c, num, 0, off_time);
+        PCA9685_SetAngleFloat(hi2c, num, target);
     }
 }

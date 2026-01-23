@@ -21,5 +21,6 @@ void PCA9685_SetPWM(I2C_HandleTypeDef *hi2c, uint8_t num, uint32_t on, uint32_t 
 void PCA9685_SetDuty(I2C_HandleTypeDef *hi2c, uint8_t num, float duty);
 void PCA9685_ServoControl(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t start_angle, uint8_t end_angle, uint8_t speed);
 void PCA9685_SetAngle(I2C_HandleTypeDef *hi2c, uint8_t num, uint8_t angle);
+void PCA9685_SetAngleFloat(I2C_HandleTypeDef *hi2c, uint8_t num, float angle);
 
 #endif
