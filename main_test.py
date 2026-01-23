@@ -6,27 +6,41 @@ from led_controller import LedIndicator
 
 def parse_pose_data_line(line):
     """
-    尝试手动解析一行 POSE 报文，
-    假设格式为：
-      POSE,<s0>,<s1>,...,<s15>,<timestamp>,...<其他数据>
-    其中前 16 项是舵机原始角度
+    解析 POSE 报文 (适配新的定点数格式)
+    格式: POSE,s0*10,...,s15*10,ts,ax*1000,...,temp*10,d1...d4,r1*10...r4*10
     """
     if not line.startswith("POSE,"):
         return None
 
     parts = line.strip().split(',')
-    if len(parts) < 17:
+    # 期望长度: 1(头) + 16(舵机) + 1(时间) + 6(IMU) + 1(温度) + 4(方向) + 4(转速) = 33
+    if len(parts) < 33:
         return None
 
     try:
-        # 取前 16 个舵机角度
-        raw_servo = [int(x) for x in parts[1:17]]
+        # 1. 舵机角度 (除以10还原)
+        raw_servo = [int(x)/10.0 for x in parts[1:17]]
+        
+        # 2. 时间戳
         timestamp = int(parts[17])
+        
+        # 3. IMU (加速度/角速度 除以1000)
+        accel = [int(x)/1000.0 for x in parts[18:21]]
+        gyro = [int(x)/1000.0 for x in parts[21:24]]
+        temp = int(parts[24])/10.0
+        
+        # 4. 电机 (转速除以10)
+        motor_dir = [int(x) for x in parts[25:29]]
+        motor_rpm = [int(x)/10.0 for x in parts[29:33]]
+
         return {
-            'servo_raw': raw_servo,
-            'timestamp': timestamp
+            'servo': raw_servo,
+            'timestamp': timestamp,
+            'imu': {'accel': accel, 'gyro': gyro, 'temp': temp},
+            'motor': {'dir': motor_dir, 'rpm': motor_rpm}
         }
-    except:
+    except Exception as e:
+        # print(f"Parse error: {e}")
         return None
 
 

@@ -231,32 +231,35 @@ static HAL_StatusTypeDef ParseMotorControlMessage(uint8_t *buffer, uint16_t leng
 HAL_StatusTypeDef SendCurrentPose(void)
 {
     char pose_msg[512];
-    memset(pose_msg, 0, sizeof(pose_msg)); // 安全初始化
+    memset(pose_msg, 0, sizeof(pose_msg));
 
-    int len = sprintf(pose_msg, "POSE,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%lu,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%d,%d,%d,%d,%.1f,%.1f,%.1f,%.1f\n",
-            servo_current_angles[0], servo_current_angles[1],
-            servo_current_angles[2], servo_current_angles[3],
-            servo_current_angles[4], servo_current_angles[5],
-            servo_current_angles[6], servo_current_angles[7],
-            servo_current_angles[8], servo_current_angles[9],
-            servo_current_angles[10], servo_current_angles[11],
-            servo_current_angles[12], servo_current_angles[13],
-            servo_current_angles[14], servo_current_angles[15],
+    // 使用定点数发送，避免 sprintf 浮点崩溃问题
+    // 角度 * 10 (保留1位小数)
+    // IMU * 1000 (保留3位小数)
+    // RPM * 10 (保留1位小数)
+    
+    int len = sprintf(pose_msg, "POSE,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+            (int)(servo_current_angles[0] * 10), (int)(servo_current_angles[1] * 10),
+            (int)(servo_current_angles[2] * 10), (int)(servo_current_angles[3] * 10),
+            (int)(servo_current_angles[4] * 10), (int)(servo_current_angles[5] * 10),
+            (int)(servo_current_angles[6] * 10), (int)(servo_current_angles[7] * 10),
+            (int)(servo_current_angles[8] * 10), (int)(servo_current_angles[9] * 10),
+            (int)(servo_current_angles[10] * 10), (int)(servo_current_angles[11] * 10),
+            (int)(servo_current_angles[12] * 10), (int)(servo_current_angles[13] * 10),
+            (int)(servo_current_angles[14] * 10), (int)(servo_current_angles[15] * 10),
             HAL_GetTick(),
-            comprehensive_pose.imu_data.accel_x_g, comprehensive_pose.imu_data.accel_y_g, comprehensive_pose.imu_data.accel_z_g,
-            comprehensive_pose.imu_data.gyro_x_dps, comprehensive_pose.imu_data.gyro_y_dps, comprehensive_pose.imu_data.gyro_z_dps,
-            comprehensive_pose.imu_data.temperature_c,
+            (int)(comprehensive_pose.imu_data.accel_x_g * 1000), (int)(comprehensive_pose.imu_data.accel_y_g * 1000), (int)(comprehensive_pose.imu_data.accel_z_g * 1000),
+            (int)(comprehensive_pose.imu_data.gyro_x_dps * 1000), (int)(comprehensive_pose.imu_data.gyro_y_dps * 1000), (int)(comprehensive_pose.imu_data.gyro_z_dps * 1000),
+            (int)(comprehensive_pose.imu_data.temperature_c * 10),
             comprehensive_pose.motor_data.direction[0], comprehensive_pose.motor_data.direction[1],
             comprehensive_pose.motor_data.direction[2], comprehensive_pose.motor_data.direction[3],
-            comprehensive_pose.motor_data.speed_rpm[0], comprehensive_pose.motor_data.speed_rpm[1],
-            comprehensive_pose.motor_data.speed_rpm[2], comprehensive_pose.motor_data.speed_rpm[3]);
+            (int)(comprehensive_pose.motor_data.speed_rpm[0] * 10), (int)(comprehensive_pose.motor_data.speed_rpm[1] * 10),
+            (int)(comprehensive_pose.motor_data.speed_rpm[2] * 10), (int)(comprehensive_pose.motor_data.speed_rpm[3] * 10));
 
-    // 安全检查：防止溢出或格式化错误
     if(len < 0 || len >= 512) {
         return HAL_ERROR;
     }
 
-    // 增加超时时间到 500ms，确保高负载下也能发送完成
     return HAL_UART_Transmit(&huart5, (uint8_t*)pose_msg, len, 500);
 }
 
